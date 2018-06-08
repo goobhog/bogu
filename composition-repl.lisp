@@ -33,6 +33,8 @@ Type 'help' for a comprehensive list of commands.~%")
 	     (list 'quote x)))
       (cons (car cmd) (mapcar #'quote-it (cdr cmd))))))
 
+
+
 (defparameter *allowed-commands* '(seq play rpt rst
 				   a0  a1  a2  a3  a4  a5  a6  a7  a8
 				   a#0 a#1 a#2 a#3 a#4 a#5 a#6 a#7 a#8
