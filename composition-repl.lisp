@@ -12,16 +12,17 @@
 (defun bogu ()
    (format t "Welcome to bogu
 Type 'help' for a comprehensive list of commands.~%")
-   (setf *score* '())
-   (setf *itime* 0)
-   (setf *bpm* '(60 0 "t"))
+   (bogu-reset)
    (composition-repl))
 
 (defun composition-repl ()
   (let ((cmd (composition-read)))
     (unless (eq (car cmd) 'quit)
-      (composition-eval cmd)
-      (composition-repl))))
+      (if (composition-eval cmd)
+	  (composition-repl)
+	  (progn
+	    (format t "command not known~%")
+	    (composition-repl))))))
 
 ;; (defun composition-read-line ()
 ;;   (let ((s (read-line)))
@@ -32,7 +33,9 @@ Type 'help' for a comprehensive list of commands.~%")
 	      (concatenate 'string "(" (read-line) ")"))))
     (flet ((quote-it (x)
 	     (list 'quote x)))
-      (cons (car cmd) (mapcar #'quote-it (cdr cmd))))))
+      (if (eql (car cmd) 'seq)
+	  (funkit cmd)
+	  (cons (car cmd) (mapcar #'quote-it (cdr cmd)))))))
 
 
 
@@ -61,8 +64,15 @@ Type 'help' for a comprehensive list of commands.~%")
 
 (defun composition-eval (sexp)
   (if (member (car sexp) *allowed-commands*)
-      (eval sexp)
-      '(command not known.)))
+      (progn
+	(eval sexp)
+	t)
+      '()))
+
+(defun funkit (funs)
+	   (flet ((fn-it (x)
+		    (list 'function x)))
+	     (append (list (car funs) (cadr funs)) (mapcar #'fn-it (cddr funs)))))
 
 (defun tweak-text (lst caps lit)
   (when lst

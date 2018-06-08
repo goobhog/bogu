@@ -14,13 +14,18 @@
 ;; 		   :direction :output
 ;; 		   :if-exists :supersede)
 ;;     (funcall thunk))
-;;   (sb-ext:run-program 
+;;   (sb-ext:run-program
 
-(defun seq (rval n1 n2 n3 n4)
-  (funcall n1 rval)
-  (funcall n2 rval)
-  (funcall n3 rval)
-  (funcall n4 rval))
+(defun bogu-reset ()
+  (setf *itime* 0)
+  (bpm 60)
+  (setf *instrument* 1)
+  (setf *score* '()))
+
+
+(defun seq (rval &rest notes)
+  (dolist (i notes)
+    (funcall i rval)))
 
 (defun rst (rval)
   (incf *itime* rval))
