@@ -5,7 +5,7 @@
 ;; 	    (fresh-line)
 ;; 	    (princ (
 (defparameter *itime* 0)
-(defparameter *bpm* 0)
+(defparameter *bpm* '("t" 0 60))
 (defparameter *instrument* 1)
 (defparameter *score* '())
 
@@ -26,20 +26,22 @@
   (incf *itime* rval))
 
 (defun bpm (n)
-  (setf *bpm* n)
-  (fresh-line)
-  (princ "t 0 ")
-  (format t "~d~%~%" n))
+  (setf *bpm* '())
+  (push "t" *bpm*)
+  (push 0 *bpm*)
+  (push n *bpm*))
 
 (defun bogu->csd (filename)
   (with-open-file (out filename
 		       :direction :output
 		       :if-exists :supersede)
     (with-standard-io-syntax
-      (format out  "<CsoundSynthesizer>~%<CsOptions>~%~%-odac~%~%</CsOptions>~%<CsInstruments>~%~%sr = 44100~%ksmps = 32~%nchnls = 2~%0dbfs = 0.5~%~%instr 1~%~%asig oscil .6, cpspch(p4)~%     outs asig,asig~%~%endin~%</CsInstruments>~%<CsScore>~%~%~{~a ~d ~d ~d ~d~%~}~%e~%</CsScore>~%</CsoundSynthesizer>" (nreverse *score*)))))
+      (format out  "<CsoundSynthesizer>~%<CsOptions>~%~%-odac~%~%</CsOptions>~%<CsInstruments>~%~%sr = 44100~%ksmps = 32~%nchnls = 2~%0dbfs = 0.5~%~%instr 1~%~%asig oscil .6, cpspch(p4)~%     outs asig,asig~%~%endin~%</CsInstruments>~%<CsScore>~%~%~{~a ~d ~d~}~%~%~{~a ~d ~d ~d ~d~%~}~%e~%</CsScore>~%</CsoundSynthesizer>" (nreverse *bpm*) (nreverse *score*)))))
+
+(defun save (filename)
+  (bogu->csd filename))
 
 (defun play (filename)
-  (bogu->csd filename)
   (sb-ext:run-program "/usr/local/bin/csound" (list filename)))
 
 
