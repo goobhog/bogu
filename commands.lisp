@@ -5,7 +5,7 @@
 ;; 	    (fresh-line)
 ;; 	    (princ (
 (defparameter *itime* 0)
-(defparameter *bpm* '("t" 0 60))
+(defparameter *bpm* '(60 0 "t"))
 (defparameter *instrument* 1)
 (defparameter *score* '())
 
