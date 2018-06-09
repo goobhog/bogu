@@ -1,4 +1,4 @@
-;; i want code to look like this
+;; i want code to look something like this
 
 ;; (composition-start)
 ;; Welcome to bogu5's composition REPL.
@@ -16,27 +16,29 @@ Type 'help' for a comprehensive list of commands.~%")
    (composition-repl))
 
 (defun composition-repl ()
+  "REPL interface for bogu. Accepts only allowed commands."
   (let ((cmd (composition-read)))
     (unless (eq (car cmd) 'quit)
-      (if (composition-eval cmd)
+      (if (composition-eval cmd) 
 	  (composition-repl)
 	  (progn
-	    (format t "command not known~%")
+	    (format t "unkown symbol~%")
 	    (composition-repl))))))
 
-;; (defun composition-read-line ()
-;;   (let ((s (read-line)))
-;;     (if
-
 (defun composition-read ()
+  "Formats bogu commands for lisp reader."
   (let ((cmd (read-from-string
 	      (concatenate 'string "(" (read-line) ")"))))
     (flet ((quote-it (x)
-	     (list 'quote x)))
-      (if (eql (car cmd) 'seq)
-	  (funkit cmd)
+	     (list 'quote x))
+	   (fn-it (x)
+	     (list 'function x)))
+      (if (eql (car cmd) 'seq) ; seq takes note functions 
+	  (append (list (car cmd) (cadr cmd)) (mapcar #'fn-it (cddr cmd)))
+	  ; e.g. seq 1 c3 d3 e3 f3 becomes (seq 1 #'c3 #'d3 #'e3 #'f3)
 	  (cons (car cmd) (mapcar #'quote-it (cdr cmd)))))))
-
+          ; other commands' parameters quoted e.g. rst .25 becomes (rst '0.25)
+         
 
 
 (defparameter *allowed-commands* '(seq play rpt rst save bpm help
@@ -63,37 +65,12 @@ Type 'help' for a comprehensive list of commands.~%")
 				   ab0 ab1 ab2 ab3 ab4 ab5 ab6 ab7))
 
 (defun composition-eval (sexp)
+  "Tests commands against allowed commands list and evaluates them."
   (if (member (car sexp) *allowed-commands*)
       (progn
 	(eval sexp)
 	t)
       '()))
 
-(defun funkit (funs)
-	   (flet ((fn-it (x)
-		    (list 'function x)))
-	     (append (list (car funs) (cadr funs)) (mapcar #'fn-it (cddr funs)))))
-
-(defun tweak-text (lst caps lit)
-  (when lst
-    (let ((item (car lst))
-	  (rest (cdr lst)))
-      (cond ((eq item #\space) (cons item (tweak-text rest caps lit)))
-	    ((member item '(#\! #\? #\.)) (cons item (tweak-text rest t lit)))
-	    ((eq item #\") (tweak-text rest caps (not lit)))
-	    (lit (cons item (tweak-text rest nil lit)))
-	    ((or caps lit) (cons (char-upcase item) (tweak-text rest nil lit)))
-	    (t (cons (char-downcase item) (tweak-text rest nil nil)))))))
-
-(defun composition-print (lst)
-  (princ (coerce (tweak-text (coerce (string-trim "() "
-						  (prin1-to-string lst))
-				     'list)
-			     t
-			     nil)
-		 'string))
-  (fresh-line))
-
-;(defparameter *composition* (make-instance 'composition :name "default))
 		
 

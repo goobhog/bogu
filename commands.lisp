@@ -1,22 +1,12 @@
 ;(in-package :bogu)
 
-;; (defun bogu->score
-;;     (mapc (lambda (note)
-;; 	    (fresh-line)
-;; 	    (princ (
 (defparameter *itime* 0)
 (defparameter *bpm* '(60 0 "t"))
 (defparameter *instrument* 1)
 (defparameter *score* '())
 
-;; (defun bogu->csd (fname thunk)
-;;   (with-open-file (*standard-output*
-;; 		   :direction :output
-;; 		   :if-exists :supersede)
-;;     (funcall thunk))
-;;   (sb-ext:run-program
-
 (defun bogu-reset ()
+  "Resets all global variables to their default values."
   (setf *itime* 0)
   (bpm 60)
   (setf *instrument* 1)
@@ -24,19 +14,23 @@
 
 
 (defun seq (rval &rest notes)
+  "Pushes a sequence of notes or rests with the same rhythmic value to score list"
   (dolist (i notes)
     (funcall i rval)))
 
 (defun rst (rval)
+  "Increases the itime of next note."
   (incf *itime* rval))
 
 (defun bpm (n)
+  "Sets beats per minute."
   (setf *bpm* '())
   (push "t" *bpm*)
   (push 0 *bpm*)
   (push n *bpm*))
 
 (defun bogu->csd (filename)
+  "Prints bogu score data to csound .csd file."
   (with-open-file (out filename
 		       :direction :output
 		       :if-exists :supersede)
@@ -44,13 +38,40 @@
       (format out  "<CsoundSynthesizer>~%<CsOptions>~%~%-odac~%~%</CsOptions>~%<CsInstruments>~%~%sr = 44100~%ksmps = 32~%nchnls = 2~%0dbfs = 0.5~%~%instr 1~%~%asig oscil .6, cpspch(p4)~%     outs asig,asig~%~%endin~%</CsInstruments>~%<CsScore>~%~%~{~a ~d ~d~}~%~%~{~a ~d ~d ~d ~d~%~}~%e~%</CsScore>~%</CsoundSynthesizer>" (nreverse *bpm*) (nreverse *score*)))))
 
 (defun save (filename)
+  "Saves bogu score data as csound .csd file."
+  (format t "saving \"~a\"...~%" filename)
   (bogu->csd filename))
 
 (defun play (filename)
+  "Plays csound .csd file."
+  (format t "playing \"~a\"...~%" filename)
   (sb-ext:run-program "/usr/local/bin/csound" (list filename)))
+
+(defun help ()
+  (format t "~%Each note of each octave is its own symbol, 
+e.g. c's third octave is written c3, g's lowest octave is written g0
+Notes range from a0 to c8.
+Sharps and flats are written # and b respectively, 
+e.g. b flat's 3rd octave is bb3, c sharp's 5th octave is written c#5
+Rests are written rst
+Each note or rest is followed by it's rhythmic value, 
+1 being a quarter note, .5 is an eighth note, 
+.25 sixteenth, 2 half, 4 whole, etc.
+To write a sequence of notes with the same value,
+type seq rval nval nval...etc.
+e.g. seq .5 c3 e3 g3 bb3
+seq will take as many notes as you give it.
+Typing bpm followed by a number will set the beats per minute,
+e.g. bpm 140
+default is 60.
+To save your composition, type save \"filepathname\" (in quotes)
+This will save a csound .csd file at that location.
+To play your composition, type play \"filepathname\" (in quotes)
+To quit, type quit~%~%"))             
 
 
 (defun note (i rval nval oval)
+  "Pushes note data to score list."
   (push "i" *score*)
   (push i *score*)
   (push *itime* *score*)
