@@ -9,39 +9,7 @@
 ;; play
 ;; playing composition...
 
-(defun bogu ()
-   (format t "Welcome to bogu
-Type 'help' for a comprehensive list of commands.~%")
-   (bogu-reset)
-   (composition-repl))
-
-(defun composition-repl ()
-  "REPL interface for bogu. Accepts only allowed commands."
-  (let ((cmd (composition-read)))
-    (unless (eq (car cmd) 'quit)
-      (if (composition-eval cmd) 
-	  (composition-repl)
-	  (progn
-	    (format t "unkown symbol~%")
-	    (composition-repl))))))
-
-(defun composition-read ()
-  "Formats bogu commands for lisp reader."
-  (let ((cmd (read-from-string
-	      (concatenate 'string "(" (read-line) ")"))))
-    (flet ((quote-it (x)
-	     (list 'quote x))
-	   (fn-it (x)
-	     (list 'function x)))
-      (if (eql (car cmd) 'seq) ; seq takes note functions 
-	  (append (list (car cmd) (cadr cmd)) (mapcar #'fn-it (cddr cmd)))
-	  ; e.g. seq 1 c3 d3 e3 f3 becomes (seq 1 #'c3 #'d3 #'e3 #'f3)
-	  (cons (car cmd) (mapcar #'quote-it (cdr cmd)))))))
-          ; other commands' parameters quoted e.g. rst .25 becomes (rst '0.25)
-         
-
-
-(defparameter *allowed-commands* '(seq play rpt rst save bpm help
+(defparameter *allowed-commands* '(seq play rpt rst save bpm help instrument
 				   a0  a1  a2  a3  a4  a5  a6  a7  a8
 				   a#0 a#1 a#2 a#3 a#4 a#5 a#6 a#7 a#8
 				   bb0 bb1 bb2 bb3 bb4 bb5 bb6 bb7 bb8
@@ -72,5 +40,32 @@ Type 'help' for a comprehensive list of commands.~%")
 	t)
       '()))
 
-		
+(defun composition-read ()
+  "Formats bogu commands for lisp reader."
+  (let ((cmd (read-from-string
+	      (concatenate 'string "(" (read-line) ")"))))
+    (flet ((quote-it (x)
+	     (list 'quote x))
+	   (fn-it (x)
+	     (list 'function x)))
+      (if (eql (car cmd) 'seq) ; seq takes note functions 
+	  (append (list (car cmd) (cadr cmd)) (mapcar #'fn-it (cddr cmd)))
+	  ; e.g. seq 1 c3 d3 e3 f3 becomes (seq 1 #'c3 #'d3 #'e3 #'f3)
+	  (cons (car cmd) (mapcar #'quote-it (cdr cmd)))))))
+          ; other commands' parameters quoted e.g. rst .25 becomes (rst '0.25)		
 
+(defun composition-repl ()
+  "REPL interface for bogu. Accepts only allowed commands."
+  (let ((cmd (composition-read)))
+    (unless (eq (car cmd) 'quit)
+      (if (composition-eval cmd) 
+	  (composition-repl)
+	  (progn
+	    (format t "unkown symbol~%")
+	    (composition-repl))))))
+
+(defun bogu ()
+   (format t "Welcome to bogu
+Type 'help' for a comprehensive list of commands.~%")
+   (bogu-reset)
+   (composition-repl))
