@@ -10,7 +10,7 @@
 ;; playing composition...
 
 (defparameter *allowed-commands* '(seq play rpt rst save bpm help
-				   instrument bogu-reset
+				   instrument bogu-reset chord
 				   a0  a1  a2  a3  a4  a5  a6  a7  a8
 				   a#0 a#1 a#2 a#3 a#4 a#5 a#6 a#7 a#8
 				   bb0 bb1 bb2 bb3 bb4 bb5 bb6 bb7 bb8
@@ -49,7 +49,7 @@
 	     (list 'quote x))
 	   (fn-it (x)
 	     (list 'function x)))
-      (if (eql (car cmd) 'seq) ; seq takes note functions 
+      (if (or (eql (car cmd) 'chord) (eql (car cmd) 'seq)) ; seq and chord take note functions 
 	  (append (list (car cmd) (cadr cmd)) (mapcar #'fn-it (cddr cmd)))
 	  ; e.g. seq 1 c3 d3 e3 f3 becomes (seq 1 #'c3 #'d3 #'e3 #'f3)
 	  (cons (car cmd) (mapcar #'quote-it (cdr cmd)))))))

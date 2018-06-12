@@ -5,7 +5,8 @@
 (defparameter *instruments* '((1 . 0)))
 (defparameter *current-instrument* 1)
 (defparameter *score* '())
-
+(defparameter *last-sequence* '())
+(defparameter *chords* '())
 
 (defun bogu-reset ()
   "Resets all global variables to their default values."
@@ -24,9 +25,19 @@
   (setf *itime* (cdr (assoc n *instruments*)))
   (setf *current-instrument* n))
   
+(defun chord (rval &rest notes)
+  "Pushes a chord to the score list."
+  (dolist (i notes)
+    (incf *current-instrument* 0.1)
+    (funcall i rval)
+    (decf *itime* rval))
+  (setf *current-instrument* (floor *current-instrument*))
+  (incf *itime* rval))
+
 
 (defun seq (rval &rest notes)
   "Pushes a sequence of notes or rests with the same rhythmic value to score list."
+  (setf *last-sequence* '())
   (dolist (i notes)
     (funcall i rval)))
 
