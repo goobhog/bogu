@@ -27,7 +27,7 @@ Typing bpm followed by a number will set the beats per minute,
 e.g. bpm 140
 The default is 60.
 
-Typing instrument followed by a number
+Typing i followed by a number
 will change which instrument you're writing to,
 setting the itime to where you left off with that instrument;
 or, if an instrument with that number does not yest exist,

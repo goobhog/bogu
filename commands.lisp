@@ -16,7 +16,7 @@
   (setf *current-instrument* 1)
   (setf *score* '()))
 
-(defun instrument (n)
+(defun i (n)
   "Changes the instrument receiving input."
   (if (not (assoc n *instruments*))
 	(push `(,n . 0) *instruments*)
@@ -24,11 +24,20 @@
   (setf (cdr (assoc *current-instrument* *instruments*)) *itime*)
   (setf *itime* (cdr (assoc n *instruments*)))
   (setf *current-instrument* n))
+
+(defun sarp (rval sval &rest notes)
+  "Pushes a sustained arpeggio to the scorelist. Parameters specify the arpeggios rhythm and length of sustain."
+  (dotimes (i (length notes))
+    (incf *current-instrument* 0.01)
+    (funcall (elt notes i) (- sval (* rval i)))
+    (decf *itime* (- sval (* rval (1+ i)))))
+  (setf *current-instrument* (floor *current-instrument*))
+  (incf *itime* (+ sval (* rval (length notes)))))
   
 (defun chord (rval &rest notes)
   "Pushes a chord to the score list."
   (dolist (i notes)
-    (incf *current-instrument* 0.1)
+    (incf *current-instrument* 0.01)
     (funcall i rval)
     (decf *itime* rval))
   (setf *current-instrument* (floor *current-instrument*))
@@ -63,7 +72,7 @@
 
 (defun save (filename)
   "Saves bogu score data as csound .csd file."
-  (format t "saving \"~a\"...~%" filename)
+  (format t "saved \"~a\"~%" filename)
   (bogu->csd filename))
 
 (defun play (filename)
