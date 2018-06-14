@@ -9,8 +9,8 @@
 ;; play
 ;; playing composition...
 
-(defparameter *allowed-commands* '(seq play rpt rst save bpm help
-				   i bogu-reset chord sarp
+(defparameter *allowed-commands* '(seq play  rpt   rst  save bpm help
+				   i   reset chord sarp del  %
 				   a0  a1  a2  a3  a4  a5  a6  a7  a8
 				   a#0 a#1 a#2 a#3 a#4 a#5 a#6 a#7 a#8
 				   bb0 bb1 bb2 bb3 bb4 bb5 bb6 bb7 bb8
@@ -52,24 +52,28 @@
       (if (or (eql (car cmd) 'chord)
 	      (eql (car cmd) 'seq)) ; seq and chord take a number and the rest note functions 
 	  (append (list (car cmd) (cadr cmd)) (mapcar #'fn-it (cddr cmd)))
-	  ; e.g. seq 1 c3 d3 e3 f3 becomes (seq 1 #'c3 #'d3 #'e3 #'f3)
+	   ; e.g. seq 1 c3 d3 e3 f3 becomes (seq 1 #'c3 #'d3 #'e3 #'f3)
 	  (if (eql (car cmd) 'sarp) ; sarp takes 2 numbers and the rest note functions
 	      (append (list (elt cmd 0) (elt cmd 1) (elt cmd 2)) (mapcar #'fn-it (cdddr cmd)))
 	      (cons (car cmd) (mapcar #'quote-it (cdr cmd))))))))
-          ; other commands' parameters quoted e.g. rst .25 becomes (rst '0.25)		
+	       ; other commands' parameters quoted e.g. rst .25 becomes (rst '0.25)		
 
 (defun composition-repl ()
   "REPL interface for bogu. Accepts only allowed commands."
   (let ((cmd (composition-read)))
     (unless (eq (car cmd) 'quit)
-      (if (composition-eval cmd) 
-	  (composition-repl)
+      (if (eq (car cmd) 'reset)
 	  (progn
-	    (format t "unkown symbol~%")
-	    (composition-repl))))))
+	    (bogu-reset)
+	    (composition-repl))
+	  (if (composition-eval cmd)
+	      (composition-repl)
+	      (progn
+		(format t "unkown symbol~%")
+		(composition-repl)))))))
 
 (defun bogu ()
    (format t "Welcome to bogu
-Type 'help' for a comprehensive list of commands.~%")
+Type 'help' for a comprehensive list of commands.~%~%")
    (bogu-reset)
    (composition-repl))
