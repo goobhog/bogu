@@ -69,9 +69,32 @@
   (setf *score* (append *last-sequence* *score*))
   (setf *itime* (+ (elt *last-sequence* 2) (elt *last-sequence* 1))))
 
+(defun rtm (rval)
+  "Returns rhythm quantity for corresponding rhythm symbol. If given a number, it simply returns that number."
+  (cond ((numberp rval) rval)
+	((eq 'q rval) 1.0)
+	((eq 'e rval) 0.5)
+	((eq 's rval) 0.25)
+	((eq 'h rval) 2.0)
+	((eq 'w rval) 4.0)
+	((eq 't rval) 0.125)
+	((eq 'q. rval) 1.5)
+	((eq 'q.. rval) 1.75)
+	((eq 'e. rval) 0.75)
+	((eq 'e.. rval) 0.875)
+	((eq 's. rval) 0.375)
+	((eq 's.. rval) 0.4375)
+	((eq 'h. rval) 3.0)
+	((eq 'h.. rval) 3.5)
+	((eq 'qt rval) (/ 2.0 3.0))
+	((eq 'et rval) (/ 1.0 3.0))
+	((eq 'st rval) (/ 0.5 3.0))
+	((eq 'tt rval) (/ 0.25 3.0))
+	((eq 'ht rval) (/ 4.0 3.0))))
+
 (defun rst (rval)
   "Increases the itime of next note."
-  (incf *itime* rval))
+  (incf *itime* (rtm rval)))
 
 (defun bpm (n)
   "Sets beats per minute."
@@ -85,9 +108,9 @@
   (push "i" *score*)
   (push i *score*)
   (push *itime* *score*)
-  (push rval *score*)
+  (push (rtm rval) *score*)
   (push (note->pch nval oval) *score*)
-  (incf *itime* rval))
+  (incf *itime* (rtm rval)))
 
 (defun save (filename)
   "Saves bogu score data as csound .csd file."

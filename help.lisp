@@ -11,12 +11,22 @@ Type del followed by a number to delete the last n notes
 e.g. del 4
 
 Rests are written rst
+
 Each note or rest is followed by its rhythmic value, 
-1 being a quarter note, .5 is an eighth note, 
-.25 sixteenth, 2 half, 4 whole, etc.
-Triplets are then various divisions of beats into 3,
-.66 being quarter note triplet, .33 eighth,
-.165 sixteenth, 1.33 half~%") (help-loop))
+q - quarter note
+e - eighth note
+s - sixteenth note
+h - half note
+w - whole note
+
+Write . or t with each symbol to make it dotted,
+or of triplet value respectively.
+
+e.g. c sharp's fourth octave dotted half-note
+c#4 h.
+
+or f's third octave eigth note triplet
+f3 et~%~%") (help-loop))
 	  ((eq 's txt) (format t "~%To write a sequence of notes and rests with the same rhythmic value,
 type seq rval nval nval...etc.
 e.g. seq .5 c3 e3 g3 bb4 rst f2 a3 c3 f3
@@ -41,7 +51,7 @@ setting the itime to 0. The default instrument is 1.~%") (help-loop))
 This will save a csound .csd file at that location.
 To play your composition, type play \"filepathname\" (in quotes)
 To quit, type quit~%~%") (help-loop))
-	  ((eq 'e txt) (fresh-line) (fresh-line)))))
+	  ((eq 'e txt) (format t "~%exit~%~%")))))
 
 (defun help ()
   (format t "~% Help Menu~%(n)otes and rests~%(s)equences~%(c)hords and sustained arpeggios~%(b)pm~%(i)nstruments~%(p)lay, save and quit~%(e)xit help menu~%~%")

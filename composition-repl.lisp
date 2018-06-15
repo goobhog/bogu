@@ -51,10 +51,11 @@
 	     (list 'function x)))
       (if (or (eql (car cmd) 'chord)
 	      (eql (car cmd) 'seq)) ; seq and chord take a number and the rest note functions 
-	  (append (list (car cmd) (cadr cmd)) (mapcar #'fn-it (cddr cmd)))
+	  (append (list (car cmd) (quote-it (cadr cmd))) (mapcar #'fn-it (cddr cmd)))
 	   ; e.g. seq 1 c3 d3 e3 f3 becomes (seq 1 #'c3 #'d3 #'e3 #'f3)
 	  (if (eql (car cmd) 'sarp) ; sarp takes 2 numbers and the rest note functions
-	      (append (list (elt cmd 0) (elt cmd 1) (elt cmd 2)) (mapcar #'fn-it (cdddr cmd)))
+	      (append (list (elt cmd 0) (quote-it (elt cmd 1)) (quote-it (elt cmd 2)))
+			    (mapcar #'fn-it (cdddr cmd)))
 	      (cons (car cmd) (mapcar #'quote-it (cdr cmd))))))))
 	       ; other commands' parameters quoted e.g. rst .25 becomes (rst '0.25)		
 
