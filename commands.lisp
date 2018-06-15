@@ -50,24 +50,19 @@
   (setf *itime* (+ (elt *score* 1) (elt *score* 2))))
 
 (defun seq (rval &rest notes)
-  "Pushes a sequence of notes or rests with the same rhythmic value to score list and replaces last sequence list with those notes."
+  "Pushes a sequence of notes or rests with the same rhythmic value to score list and replaces last sequence list with a list of a call to seq."
   (setf *last-sequence* '())
-  (let ((c nil))
-    (dolist (i notes)
-      (when (equal i #'rst)
-	(push nil c))
-      (funcall i rval))
-    (dotimes (i (* 5 (- (length notes) (length c))))
-      (push (elt *score* i) *last-sequence*)))
-  (setf *last-sequence* (reverse *last-sequence*)))
+  (dolist (i notes)
+    (funcall i rval))
+  (setf *last-sequence* (flatten `(seq ,rval ,notes))))
 
 (defun % ()
-  "Pushes last sequence list to score list with correct itimes."
-  (dotimes (i (length *last-sequence*))
-    (if (= (mod (+ i 3) 5) 0)
-	(setf (elt *last-sequence* i) (+ *itime* (elt *last-sequence* i)))))
-  (setf *score* (append *last-sequence* *score*))
-  (setf *itime* (+ (elt *last-sequence* 2) (elt *last-sequence* 1))))
+  "Evaluates last sequence list."
+  (flet ((quote-it (x)
+	   (list 'quote x)))
+    (eval
+     (cons (car *last-sequence*)
+	   (cons (quote-it (cadr *last-sequence*)) (cddr *last-sequence*))))))
 
 (defun rtm (rval)
   "Returns rhythm quantity for corresponding rhythm symbol. If given a number, it simply returns that number."
