@@ -19,7 +19,7 @@ s - sixteenth note
 h - half note
 w - whole note
 
-Write . or t with each symbol to make it dotted,
+Write . or t with each symbol to make it dotted
 or of triplet value respectively.
 
 e.g. c sharp's fourth octave dotted half-note
@@ -31,22 +31,28 @@ f3 et~%~%") (help-loop))
 type seq rval nval nval...etc.
 e.g. seq .5 c3 e3 g3 bb4 rst f2 a3 c3 f3
 seq will take as many notes and rests as you give it.
-To rewrite the last sequence simply type %~%") (help-loop))
+To rewrite the last sequence simply type %~%~%") (help-loop))
 	  ((eq 'c txt) (format t "~%To write a chord in one instrument
 type chord rval nval nval...etc.
 e.g. chord 2 d3 f#3 c4 f4 bb5
 A sustained arpeggio is written by typing sarp followed by
 the rhythmic value and length of whole arpeggio
-e.g. sarp .5 4 a3 e3 g3 b4 c4 e4~%") (help-loop))
+e.g. sarp .5 4 a3 e3 g3 b4 c4 e4~%~%") (help-loop))
 	  ((eq 'b txt) (format t "~%Typing bpm followed by a number will set the beats per minute,
 e.g. bpm 140
-The default is 60.~%") (help-loop))
+The default is 60.~%~%") (help-loop))
+	  ((eq 'd txt) (format t "~%The user may define her own chord by typing defchord name nval nval nval...etc.
+e.g. defchord bbmaj9 bb2 f2 d3 a4 d4
+Chords can then be given as parameters to the chord function,
+e.g. chord h. bbmaj9
+
+To view the current ledger of chord definitions, type chords~%~%") (help-loop))
 	  ((eq 'i txt) (format t "~%Typing i followed by a number
 will change which instrument you're writing to,
 setting the itime to where you left off with that instrument;
 or, if an instrument with that number does not yest exist,
 will create a new instrument with that number,
-setting the itime to 0. The default instrument is 1.~%") (help-loop))
+setting the itime to 0. The default instrument is 1.~%~%") (help-loop))
 	  ((eq 'p txt) (format t "~%To save your composition, type save \"filepathname\" (in quotes)
 This will save a csound .csd file at that location.
 To play your composition, type play \"filepathname\" (in quotes)
@@ -54,5 +60,5 @@ To quit, type quit~%~%") (help-loop))
 	  ((eq 'e txt) (format t "~%exit~%~%")))))
 
 (defun help ()
-  (format t "~% Help Menu~%(n)otes and rests~%(s)equences~%(c)hords and sustained arpeggios~%(b)pm~%(i)nstruments~%(p)lay, save and quit~%(e)xit help menu~%~%")
+  (format t "~%Help Menu~%(n)otes and rests~%(s)equences~%(c)hords and sustained arpeggios~%(b)pm~%(i)nstruments~%(d)efinitions~%(p)lay, save and quit~%(e)xit help menu~%~%")
   (help-loop))

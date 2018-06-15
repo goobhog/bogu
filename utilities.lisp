@@ -11,3 +11,9 @@
   (cond ((null l) nil)
         ((atom l) (list l))
         (t (loop for a in l appending (flatten a)))))
+
+(defun fn-it (fn)
+  (list 'function fn))
+
+(defun quote-it (p)
+  (list 'quote p))

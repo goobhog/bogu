@@ -9,8 +9,9 @@
 ;; play
 ;; playing composition...
 
-(defparameter *allowed-commands* '(seq play  rpt   rst  save bpm help
-				   i   reset chord sarp del  %
+(defparameter *allowed-commands* '(seq   play  rpt   rst  save bpm help
+				   i     reset chord sarp del  %   defchord
+				   chords
 				   a0  a1  a2  a3  a4  a5  a6  a7  a8
 				   a#0 a#1 a#2 a#3 a#4 a#5 a#6 a#7 a#8
 				   bb0 bb1 bb2 bb3 bb4 bb5 bb6 bb7 bb8
@@ -45,19 +46,15 @@
   "Formats bogu commands for lisp reader."
   (let ((cmd (read-from-string
 	      (concatenate 'string "(" (read-line) ")"))))
-    (flet ((quote-it (x)
-	     (list 'quote x))
-	   (fn-it (x)
-	     (list 'function x)))
-      (if (or (eql (car cmd) 'chord)
-	      (eql (car cmd) 'seq)) ; seq and chord take a number and the rest note functions 
-	  (append (list (car cmd) (quote-it (cadr cmd))) (mapcar #'fn-it (cddr cmd)))
-	   ; e.g. seq 1 c3 d3 e3 f3 becomes (seq 1 #'c3 #'d3 #'e3 #'f3)
-	  (if (eql (car cmd) 'sarp) ; sarp takes 2 numbers and the rest note functions
-	      (append (list (elt cmd 0) (quote-it (elt cmd 1)) (quote-it (elt cmd 2)))
-			    (mapcar #'fn-it (cdddr cmd)))
-	      (cons (car cmd) (mapcar #'quote-it (cdr cmd))))))))
-	       ; other commands' parameters quoted e.g. rst .25 becomes (rst '0.25)		
+    (if (or (and (eql (car cmd) 'chord) (member (cdr cmd) *allowed-commands*))
+	    (eql (car cmd) 'seq)) ; seq and chord take a number and the rest note functions 
+	(append (list (car cmd) (quote-it (cadr cmd))) (mapcar #'fn-it (cddr cmd)))
+	; e.g. seq 1 c3 d3 e3 f3 becomes (seq 1 #'c3 #'d3 #'e3 #'f3)
+	(if (eql (car cmd) 'sarp) ; sarp takes 2 numbers and the rest note functions
+	    (append (list (elt cmd 0) (quote-it (elt cmd 1)) (quote-it (elt cmd 2)))
+		    (mapcar #'fn-it (cdddr cmd)))
+	    (cons (car cmd) (mapcar #'quote-it (cdr cmd)))))))
+	    ; other commands' parameters quoted e.g. rst .25 becomes (rst '0.25)		
 
 (defun composition-repl ()
   "REPL interface for bogu. Accepts only allowed commands."

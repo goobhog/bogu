@@ -14,7 +14,8 @@
   (bpm 60)
   (setf *instruments* '((1 . 0)))
   (setf *current-instrument* 1)
-  (setf *score* '()))
+  (setf *score* '())
+  (setf *chords* '()))
 
 (defun i (n)
   "Changes the instrument receiving input."
@@ -29,19 +30,33 @@
   "Pushes a sustained arpeggio to the score list. Parameters specify the arpeggio's rhythm and length of sustain."
   (dotimes (i (length notes))
     (incf *current-instrument* 0.01)
-    (funcall (elt notes i) (- sval (* rval i)))
-    (decf *itime* (- sval (* rval (1+ i)))))
+    (funcall (elt notes i) (- (rtm sval) (* (rtm rval) i)))
+    (decf *itime* (- (rtm sval) (* (rtm rval) (1+ i)))))
   (setf *current-instrument* (floor *current-instrument*))
-  (incf *itime* (+ sval (* rval (length notes)))))
+  (incf *itime* (+ (rtm sval) (* (rtm rval) (length notes)))))
+
+(defun defchord (name &rest notes)
+  "Pushes a user defined chord to chords list."
+  (push (cons name notes) *chords*))
+
+(defun chords ()
+  "Displays current ledger of chord definitions."
+  (if *chords*
+      (format t "~%~{~a ~%~}~%" *chords*)
+      (format t "~%nothing here yet...~%~%")))
   
 (defun chord (rval &rest notes)
   "Pushes a chord to the score list."
-  (dolist (i notes)
-    (incf *current-instrument* 0.01)
-    (funcall i rval)
-    (decf *itime* rval))
-  (setf *current-instrument* (floor *current-instrument*))
-  (incf *itime* rval))
+  (let ((r (rtm rval)))
+    (if (assoc (car notes) *chords*)
+	(eval (append `(chord ,r) (mapcar #'fn-it (cdr (assoc (car notes) *chords*)))))
+	(progn
+	  (dolist (i notes)
+	    (incf *current-instrument* 0.01)
+	    (funcall i r)
+	  (decf *itime* r))
+	(setf *current-instrument* (floor *current-instrument*))
+	(incf *itime* r)))))
 
 (defun del (n)
   "Deletes n notes beginning with the last note entered."
@@ -58,11 +73,8 @@
 
 (defun % ()
   "Evaluates last sequence list."
-  (flet ((quote-it (x)
-	   (list 'quote x)))
-    (eval
-     (cons (car *last-sequence*)
-	   (cons (quote-it (cadr *last-sequence*)) (cddr *last-sequence*))))))
+  (eval (cons (car *last-sequence*)
+	 (cons (quote-it (cadr *last-sequence*)) (cddr *last-sequence*)))))
 
 (defun rtm (rval)
   "Returns rhythm quantity for corresponding rhythm symbol. If given a number, it simply returns that number."
