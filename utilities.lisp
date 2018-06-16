@@ -13,7 +13,9 @@
         (t (loop for a in l appending (flatten a)))))
 
 (defun fn-it (fn)
+  "Calls function on an item."
   (list 'function fn))
 
 (defun quote-it (p)
+  "Quotes an item."
   (list 'quote p))

@@ -15,6 +15,7 @@
   (setf *instruments* '((1 . 0)))
   (setf *current-instrument* 1)
   (setf *score* '())
+  (setf *last-sequence* '())
   (setf *chords* '()))
 
 (defun i (n)
@@ -42,7 +43,7 @@
 (defun chords ()
   "Displays current ledger of chord definitions."
   (if *chords*
-      (format t "~%~{~a ~%~}~%" *chords*)
+      (format t "~%~{~a ~%~}~%" (reverse *chords*))
       (format t "~%nothing here yet...~%~%")))
   
 (defun chord (rval &rest notes)
@@ -56,7 +57,7 @@
 	    (funcall i r)
 	  (decf *itime* r))
 	(setf *current-instrument* (floor *current-instrument*))
-	(incf *itime* r)))))
+	(incf *itime* r))))) 
 
 (defun del (n)
   "Deletes n notes beginning with the last note entered."
@@ -120,14 +121,17 @@
   (incf *itime* (rtm rval)))
 
 (defun save (filename)
-  "Saves bogu score data as csound .csd file."
-  (format t "saved \"~a\"~%" filename)
+  "Saves bogu score data as csound .csd file to the compositions folder."
+  (format t "saved \"~~/bogu/compositions/tests/~a.csd\"~%" filename)
   (bogu->csd filename))
 
 (defun play (filename)
-  "Plays csound .csd file."
-  (format t "playing \"~a\"...~%" filename)
-  (sb-ext:run-program "/usr/local/bin/csound" (list filename)))
+  "Plays csound .csd file from the compositions folder matching the filename input."
+  (format t "playing \"~~/bogu/compositions/tests/~a.csd\"...~%" filename)
+  (sb-ext:run-program "/usr/local/bin/csound"
+		      (list (namestring (comp-path filename)))))
+
+  
             
 
 ;; note functions ----------------------------
@@ -288,7 +292,7 @@
   (note *current-instrument* rval 'bsharp/c 8))
 
 (defun b#4 (rval)
-  (note *current-instrument* rval 'bshar/c 9))
+  (note *current-instrument* rval 'bsharp/c 9))
 
 (defun b#5 (rval)
   (note *current-instrument* rval 'bsharp/c 10))
