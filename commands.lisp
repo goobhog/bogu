@@ -7,8 +7,9 @@
 (defparameter *score* '())
 (defparameter *last-sequence* '())
 (defparameter *chords* '())
+(defparameter *sequences* '())
 
-(defun bogu-reset ()
+(defun reset-bogu ()
   "Resets all global variables to their default values."
   (setf *itime* 0)
   (bpm 60)
@@ -16,7 +17,9 @@
   (setf *current-instrument* 1)
   (setf *score* '())
   (setf *last-sequence* '())
-  (setf *chords* '()))
+  (setf *chords* '())
+  (setf *sequences* '())
+  (setf *bogu-code* '()))
 
 (defun i (n)
   "Changes the instrument receiving input."
@@ -26,15 +29,6 @@
   (setf (cdr (assoc *current-instrument* *instruments*)) *itime*)
   (setf *itime* (cdr (assoc n *instruments*)))
   (setf *current-instrument* n))
-
-(defun sarp (rval sval &rest notes)
-  "Pushes a sustained arpeggio to the score list. Parameters specify the arpeggio's rhythm and length of sustain."
-  (dotimes (i (length notes))
-    (incf *current-instrument* 0.01)
-    (funcall (elt notes i) (- (rtm sval) (* (rtm rval) i)))
-    (decf *itime* (- (rtm sval) (* (rtm rval) (1+ i)))))
-  (setf *current-instrument* (floor *current-instrument*))
-  (incf *itime* (+ (rtm sval) (* (rtm rval) (length notes)))))
 
 (defun defchord (name &rest notes)
   "Pushes a user defined chord to chords list."
@@ -65,40 +59,45 @@
     (pop *score*))
   (setf *itime* (+ (elt *score* 1) (elt *score* 2))))
 
+(defun defseq (name &rest notes)
+  "Pushes a user defined sequence to the sequences list."
+  (push (cons name notes) *sequences*))
+
+(defun seqs ()
+  "Displays current ledger of user defined sequences."
+  (if *sequences*
+      (format t "~%~{~a ~%~}~%" (reverse *sequences*))
+      (format t "~%nothing here yet...~%~%")))
+
 (defun seq (rval &rest notes)
   "Pushes a sequence of notes or rests with the same rhythmic value to score list and replaces last sequence list with a list of a call to seq."
   (setf *last-sequence* '())
-  (dolist (i notes)
-    (funcall i rval))
-  (setf *last-sequence* (flatten `(seq ,rval ,notes))))
+  (let ((r (rtm rval)))
+    (if (assoc (car notes) *sequences*)
+	(eval (append `(seq ,r) (mapcar #'fn-it (cdr (assoc (car notes) *sequences*)))))
+	(dolist (i notes)
+	  (funcall i r)))
+    (setf *last-sequence* (flatten `(seq ,r ,notes)))))
+
+(defun sarp (rval sval &rest notes)
+  "Pushes a sustained arpeggio to the score list. Parameters specify the arpeggio's rhythm and length of sustain."
+  (let ((r (rtm rval))
+	(s (rtm sval)))
+    (if (assoc (car notes) *sequences*)
+	(eval (append `(sarp ,r ,s) (mapcar #'fn-it (cdr (assoc (car notes) *sequences*)))))
+	(dotimes (i (length notes))
+	  (incf *current-instrument* 0.01)
+	  (funcall (elt notes i) (- s (* r i)))
+	  (decf *itime* (- s (* r (1+ i))))))
+    (setf *current-instrument* (floor *current-instrument*))
+    (incf *itime* (+ s (* r (length notes))))))
 
 (defun % ()
   "Evaluates last sequence list."
-  (eval (cons (car *last-sequence*)
-	 (cons (quote-it (cadr *last-sequence*)) (cddr *last-sequence*)))))
-
-(defun rtm (rval)
-  "Returns rhythm quantity for corresponding rhythm symbol. If given a number, it simply returns that number."
-  (cond ((numberp rval) rval)
-	((eq 'q rval) 1.0)
-	((eq 'e rval) 0.5)
-	((eq 's rval) 0.25)
-	((eq 'h rval) 2.0)
-	((eq 'w rval) 4.0)
-	((eq 't rval) 0.125)
-	((eq 'q. rval) 1.5)
-	((eq 'q.. rval) 1.75)
-	((eq 'e. rval) 0.75)
-	((eq 'e.. rval) 0.875)
-	((eq 's. rval) 0.375)
-	((eq 's.. rval) 0.4375)
-	((eq 'h. rval) 3.0)
-	((eq 'h.. rval) 3.5)
-	((eq 'qt rval) (/ 2.0 3.0))
-	((eq 'et rval) (/ 1.0 3.0))
-	((eq 'st rval) (/ 0.5 3.0))
-	((eq 'tt rval) (/ 0.25 3.0))
-	((eq 'ht rval) (/ 4.0 3.0))))
+  (if (assoc (third *last-sequence*) *sequences*)
+      (eval (cons (car *last-sequence*) (mapcar #'quote-it (cdr *last-sequence*))))
+      (eval (cons (car *last-sequence*)
+		  (cons (quote-it (cadr *last-sequence*)) (cddr *last-sequence*))))))
 
 (defun rst (rval)
   "Increases the itime of next note."
@@ -121,15 +120,30 @@
   (incf *itime* (rtm rval)))
 
 (defun save (filename)
-  "Saves bogu score data as csound .csd file to the compositions folder."
-  (format t "saved \"~~/bogu/compositions/tests/~a.csd\"~%" filename)
-  (bogu->csd filename))
+  "Saves bogu code data as a .bogu file to the compositions folder."
+  (with-open-file (out (comp-path filename "bogu/compositions/tests" "bogu")
+		       :direction :output
+		       :if-exists :supersede)
+    (with-standard-io-syntax
+      (format out "~{~a~%~}" (reverse *bogu-code*))))
+  (format t "saved \"~~/bogu/compositions/tests/~a.bogu\"~%" filename))
+   
+(defun bogu-load (filename)
+  "Reads input from a .bogu file."
+  (with-open-file (in (comp-path filename "bogu/compositions/tests" "bogu")
+		      :direction :input
+		      :if-does-not-exist nil)
+    (when in
+      (loop for line = (read-line in nil)
+	 while line do 
+	   (eval (bogu-reader line))))))
 
 (defun play (filename)
-  "Plays csound .csd file from the compositions folder matching the filename input."
+  "Creates and plays a csound .csd file in the compositions folder matching the filename input."
+  (bogu->csd filename)
   (format t "playing \"~~/bogu/compositions/tests/~a.csd\"...~%" filename)
   (sb-ext:run-program "/usr/local/bin/csound"
-		      (list (namestring (comp-path filename)))))
+		      (list (namestring (comp-path filename "bogu/compositions/tests" "csd")))))
 
   
             

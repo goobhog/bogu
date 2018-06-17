@@ -1,17 +1,6 @@
-;; i want code to look something like this
-
-;; (composition-start)
-;; Welcome to bogu5's composition REPL.
-;; Type 'help' to see a comprehensive
-;; list of commands.
-
-;; seq(.16 rest c3 d3 e3) seq(.16 f3 d3 e3 c3) g3(8)
-;; play
-;; playing composition...
-
-(defparameter *allowed-commands* '(seq   play  rpt   rst  save bpm help
-				   i     reset chord sarp del  %   defchord
-				   chords
+(defparameter *allowed-commands* '(seq    play   rpt   rst  save bpm help
+				   i      reset  chord sarp del  %   defchord
+				   chords defseq seqs  bogu-load
 				   a0  a1  a2  a3  a4  a5  a6  a7  a8
 				   a#0 a#1 a#2 a#3 a#4 a#5 a#6 a#7 a#8
 				   bb0 bb1 bb2 bb3 bb4 bb5 bb6 bb7 bb8
@@ -33,6 +22,7 @@
 				   g0  g1  g2  g3  g4  g5  g6  g7
 				   g#0 g#1 g#2 g#3 g#4 g#5 g#6 g#7
 				   ab0 ab1 ab2 ab3 ab4 ab5 ab6 ab7))
+(defparameter *bogu-code* '())
 
 (defun composition-eval (sexp)
   "Tests commands against allowed commands list and evaluates them."
@@ -42,36 +32,38 @@
 	t)
       '()))
 
-(defun composition-read ()
-  "Formats bogu commands for lisp reader."
+(defun bogu-reader (code)
+  "Formats bogu code for lisp reader."
   (let ((cmd (read-from-string
-	      (concatenate 'string "(" (read-line) ")"))))
-    (if (or (and (eql (car cmd) 'chord) (member (cdr cmd) *allowed-commands*))
-	    (eql (car cmd) 'seq)) ; seq and chord take a number and the rest note functions 
-	(append (list (car cmd) (quote-it (cadr cmd))) (mapcar #'fn-it (cddr cmd)))
-	; e.g. seq 1 c3 d3 e3 f3 becomes (seq 1 #'c3 #'d3 #'e3 #'f3)
-	(if (eql (car cmd) 'sarp) ; sarp takes 2 numbers and the rest note functions
-	    (append (list (elt cmd 0) (quote-it (elt cmd 1)) (quote-it (elt cmd 2)))
-		    (mapcar #'fn-it (cdddr cmd)))
-	    (cons (car cmd) (mapcar #'quote-it (cdr cmd)))))))
-	    ; other commands' parameters quoted e.g. rst .25 becomes (rst '0.25)		
+	      (concatenate 'string "(" code ")"))))
+    (cond ((or (and (eql (car cmd) 'chord)
+		    (member (cdr cmd) *allowed-commands*))
+	       (and (eq (car cmd) 'seq)
+		    (member (cdr cmd) *allowed-commands*)))
+	   (append (list (car cmd) (quote-it (cadr cmd)))
+		   (mapcar #'fn-it (cddr cmd))))
+	  ((and (eql (car cmd) 'sarp)
+		(member (cddr cmd) *allowed-commands*))
+	   (append (list (elt cmd 0)
+			 (quote-it (elt cmd 1))
+			 (quote-it (elt cmd 2)))
+		   (mapcar #'fn-it (cdddr cmd))))
+	  ((eq (car cmd) 'load) (append '(bogu-load) (cdr cmd)))
+	  (t (cons (car cmd) (mapcar #'quote-it (cdr cmd)))))))
 
 (defun composition-repl ()
-  "REPL interface for bogu. Accepts only allowed commands."
-  (let ((cmd (composition-read)))
+  "REPL interface for bogu."
+  (let* ((line (read-line))
+	 (cmd (bogu-reader line)))
     (unless (eq (car cmd) 'quit)
-      (if (eq (car cmd) 'reset)
-	  (progn
-	    (bogu-reset)
-	    (composition-repl))
-	  (if (composition-eval cmd)
-	      (composition-repl)
-	      (progn
-		(format t "unkown symbol~%")
-		(composition-repl)))))))
+      (cond ((eq (car cmd) 'reset) (reset-bogu) (composition-repl))
+	    ((eq (car cmd) 'load)  (load-bogu (second cmd)) (composition-repl))
+	    ((composition-eval cmd) (push line *bogu-code*) (composition-repl))
+	    (t (format t "unknown symbol~%") (composition-repl))))))
 
 (defun bogu ()
+  "Initiates bogu."
    (format t "Welcome to bogu
 Type 'help' for a comprehensive list of commands.~%~%")
-   (bogu-reset)
+   (reset-bogu)
    (composition-repl))

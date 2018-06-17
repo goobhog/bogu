@@ -26,10 +26,13 @@ e.g. c sharp's fourth octave dotted half-note
 c#4 h.
 
 or f's third octave eigth note triplet
-f3 et~%~%") (help-loop))
+f3 et
+
+The user may also type a number in place of a rhythmic symbol.
+e.g. f3 .5~%~%") (help-loop))
 	  ((eq 's txt) (format t "~%To write a sequence of notes and rests with the same rhythmic value,
 type seq rval nval nval...etc.
-e.g. seq .5 c3 e3 g3 bb4 rst f2 a3 c3 f3
+e.g. seq q c3 e3 g3 bb4 rst f2 a3 c3 f3
 seq will take as many notes and rests as you give it.
 To rewrite the last sequence simply type %~%~%") (help-loop))
 	  ((eq 'c txt) (format t "~%To write a chord in one instrument
@@ -41,11 +44,13 @@ e.g. sarp .5 4 a3 e3 g3 b4 c4 e4~%~%") (help-loop))
 	  ((eq 'b txt) (format t "~%Typing bpm followed by a number will set the beats per minute,
 e.g. bpm 140
 The default is 60.~%~%") (help-loop))
-	  ((eq 'd txt) (format t "~%The user may define her own chord by typing defchord name nval nval nval...etc.
+	  ((eq 'd txt) (format t "~%The user may define her own chords or sequences by typing 
+defchord name nval nval nval...etc. or defs name nval nval nval...etc. respecttiely.
 e.g. defchord bbmaj9 bb2 f2 d3 a4 d4
-Chords can then be given as parameters to the chord function,
+     defseq bbscale bb3 c3 d3 eb3 f3 g3 a4 bb4
+Chords and sequences can then be given as parameters to the chord and seq function,
 e.g. chord h. bbmaj9
-
+     seq et bbscale 
 To view the current ledger of chord definitions, type chords~%~%") (help-loop))
 	  ((eq 'i txt) (format t "~%Typing i followed by a number
 will change which instrument you're writing to,
@@ -53,12 +58,16 @@ setting the itime to where you left off with that instrument;
 or, if an instrument with that number does not yest exist,
 will create a new instrument with that number,
 setting the itime to 0. The default instrument is 1.~%~%") (help-loop))
-	  ((eq 'p txt) (format t "~%To save your composition, type save \"filepathname\" (in quotes)
-This will save a csound .csd file at that location.
-To play your composition, type play \"filepathname\" (in quotes)
+	  ((eq 'l txt) (format t "~%To save your composition, type save \"name\" (in quotes)
+This will save a .bogu file in the bogu/compositions folder.
+To play your composition, type play \"name\" (in quotes)
+This will create and play a csound .csd file in the bogu/compositions foler.
+
+Typing reset will reset the composition status.
+
 To quit, type quit~%~%") (help-loop))
 	  ((eq 'e txt) (format t "~%exit~%~%")))))
 
 (defun help ()
-  (format t "~%Help Menu~%(n)otes and rests~%(s)equences~%(c)hords and sustained arpeggios~%(b)pm~%(i)nstruments~%(d)efinitions~%(p)lay, save and quit~%(e)xit help menu~%~%")
+  (format t "~%Help Menu~%(n)otes and rests~%(s)equences~%(c)hords and sustained arpeggios~%(b)pm~%(i)nstruments~%(d)efinitions~%(l)oad, save, play, reset and quit~%(e)xit help menu~%~%")
   (help-loop))
