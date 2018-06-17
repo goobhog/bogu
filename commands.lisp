@@ -90,7 +90,7 @@
 	  (funcall (elt notes i) (- s (* r i)))
 	  (decf *itime* (- s (* r (1+ i))))))
     (setf *current-instrument* (floor *current-instrument*))
-    (incf *itime* (+ s (* r (length notes))))))
+    (incf *itime* (- s (* r (length notes))))))
 
 (defun % ()
   "Evaluates last sequence list."
@@ -120,27 +120,33 @@
   (incf *itime* (rtm rval)))
 
 (defun save (filename)
-  "Saves bogu code data as a .bogu file to the compositions folder."
+  "Saves the bogu code data as a .bogu file and the composition data as a csound .csd file to the compositions folder."
   (with-open-file (out (comp-path filename "bogu/compositions/tests" "bogu")
 		       :direction :output
 		       :if-exists :supersede)
     (with-standard-io-syntax
-      (format out "~{~a~%~}" (reverse *bogu-code*))))
+      (dolist (i (reverse *bogu-code*))
+	(if (not (or (string= (format nil "~{~a~^~}" `("load " \" ,filename \")) i)
+		     (string= "play" i :start2 0 :end2 4)
+		     (string= "save" i :start2 0 :end2 4)))
+	    (format out "~{~a~%~}" (list i))))))
+  (bogu->csd filename)
   (format t "saved \"~~/bogu/compositions/tests/~a.bogu\"~%" filename))
    
 (defun bogu-load (filename)
   "Reads input from a .bogu file."
+  (reset-bogu)
   (with-open-file (in (comp-path filename "bogu/compositions/tests" "bogu")
 		      :direction :input
 		      :if-does-not-exist nil)
     (when in
       (loop for line = (read-line in nil)
-	 while line do 
+	 while line do
+	   (push line *bogu-code*)
 	   (eval (bogu-reader line))))))
 
 (defun play (filename)
   "Creates and plays a csound .csd file in the compositions folder matching the filename input."
-  (bogu->csd filename)
   (format t "playing \"~~/bogu/compositions/tests/~a.csd\"...~%" filename)
   (sb-ext:run-program "/usr/local/bin/csound"
 		      (list (namestring (comp-path filename "bogu/compositions/tests" "csd")))))
