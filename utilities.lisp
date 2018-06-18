@@ -20,6 +20,13 @@
   "Quotes an item."
   (list 'quote p))
 
+(defun stringem (&rest items)
+  "Adjoins items as one string."
+  (format nil "~{~a~^~}" items))
+
+(defun bogu-folder (name)
+  (ensure-directories-exist (stringem 'bogu/compositions/ name #\/)))
+
 (defun rtm (rval)
   "Returns rhythm quantity for corresponding rhythm symbol. If given a number, it simply returns that number."
   (cond ((numberp rval) rval)

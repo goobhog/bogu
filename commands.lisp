@@ -121,22 +121,22 @@
 
 (defun save (filename)
   "Saves the bogu code data as a .bogu file and the composition data as a csound .csd file to the compositions folder."
-  (with-open-file (out (comp-path filename "bogu/compositions/tests" "bogu")
+  (with-open-file (out (comp-path filename (bogu-folder filename) "bogu")
 		       :direction :output
 		       :if-exists :supersede)
     (with-standard-io-syntax
       (dolist (i (reverse *bogu-code*))
-	(if (not (or (string= (format nil "~{~a~^~}" `("load " \" ,filename \")) i)
+	(if (not (or (string= (stringem `("load " \" ,filename \")) i)
 		     (string= "play" i :start2 0 :end2 4)
 		     (string= "save" i :start2 0 :end2 4)))
 	    (format out "~{~a~%~}" (list i))))))
   (bogu->csd filename)
-  (format t "saved \"~~/bogu/compositions/tests/~a.bogu\"~%" filename))
+  (format t "saved \"~~/bogu/compositions/~a/~a.bogu\"~%" filename filename))
    
 (defun bogu-load (filename)
   "Reads input from a .bogu file."
   (reset-bogu)
-  (with-open-file (in (comp-path filename "bogu/compositions/tests" "bogu")
+  (with-open-file (in (comp-path filename (bogu-folder filename) "bogu")
 		      :direction :input
 		      :if-does-not-exist nil)
     (when in
@@ -147,9 +147,9 @@
 
 (defun play (filename)
   "Creates and plays a csound .csd file in the compositions folder matching the filename input."
-  (format t "playing \"~~/bogu/compositions/tests/~a.csd\"...~%" filename)
+  (format t "playing \"~~/bogu/compositions/~a/~a.csd\"...~%" filename filename)
   (sb-ext:run-program "/usr/local/bin/csound"
-		      (list (namestring (comp-path filename "bogu/compositions/tests" "csd")))))
+		      (list (namestring (comp-path filename (bogu-folder filename) "csd")))))
 
   
             
