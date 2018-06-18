@@ -85,12 +85,13 @@
 	(s (rtm sval)))
     (if (assoc (car notes) *sequences*)
 	(eval (append `(sarp ,r ,s) (mapcar #'fn-it (cdr (assoc (car notes) *sequences*)))))
-	(dotimes (i (length notes))
-	  (incf *current-instrument* 0.01)
-	  (funcall (elt notes i) (- s (* r i)))
-	  (decf *itime* (- s (* r (1+ i))))))
-    (setf *current-instrument* (floor *current-instrument*))
-    (incf *itime* (- s (* r (length notes))))))
+	(progn
+	  (dotimes (i (length notes))
+	    (incf *current-instrument* 0.01)
+	    (funcall (elt notes i) (- s (* r i)))
+	    (decf *itime* (- s (* r (1+ i)))))
+	  (setf *current-instrument* (floor *current-instrument*))
+	  (incf *itime* (- s (* r (length notes))))))))
 
 (defun % ()
   "Evaluates last sequence list."
@@ -126,9 +127,9 @@
 		       :if-exists :supersede)
     (with-standard-io-syntax
       (dolist (i (reverse *bogu-code*))
-	(if (not (or (string= (stringem `("load " \" ,filename \")) i)
-		     (string= "play" i :start2 0 :end2 4)
-		     (string= "save" i :start2 0 :end2 4)))
+	(if (not (or (string= (stringem "load " #\" filename #\") i)
+		     (string= "pla" i :start2 0 :end2 3)
+		     (string= "sav" i :start2 0 :end2 3)))
 	    (format out "~{~a~%~}" (list i))))))
   (bogu->csd filename)
   (format t "saved \"~~/bogu/compositions/~a/~a.bogu\"~%" filename filename))

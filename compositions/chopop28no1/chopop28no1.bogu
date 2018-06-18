@@ -1,0 +1,83 @@
+bpm 144
+defseq arp1 c1 g1 e2 e3 c3 a3
+defseq arp1a rst g2 c3 g3 rst a4
+defseq arp2 b1 g1 f2 f3 d3 a3
+defseq arp2a rst g2 d3 g3 rst a4
+defseq arp3 e1 c2 g2 g3 e3 c4
+defseq arp3a rst b3 e3 b4 rst a4
+defseq arp4 f1 c2 a3 c4 a4 d3
+defseq arp4a rst e3 a4 e4 rst d4
+sarp et h arp1
+sarp et h arp2
+sarp et h arp1
+sarp et h arp3
+sarp et h arp4
+i 2
+sarp et h arp1a
+sarp et h arp2a
+sarp et h arp1a
+sarp et h arp3a
+sarp et h arp4a
+i 1
+sarp et h f#1 d2 c3 c4 a4 d3
+sarp et h g1 f2 b3 b4 g3 d3
+sarp et h g0 g1 f2 f3 d3 a3
+i 2
+sarp et h rst e3 a4 e4 rst d4
+sarp et h rst e3 g3 e4 rst d4
+sarp et h rst b3 d3 b4 rst a4
+sarp et h arp1a
+sarp et h arp2a
+sarp et h arp1a
+sarp et h arp3a
+sarp et h rst c#3 f3 c#4 rst d4
+i 1
+sarp et h arp1
+sarp et h arp2
+sarp et h arp1
+sarp et h arp3
+sarp et h arp4
+sarp et h g1 c2 bb3 c4 g3 e3
+sarp et h a1 f2 c3 c4 a4 f3
+sarp et h g1 c2 c3 c4 g3 e3
+sarp et h a2 f2 c3 c4 a4 f3
+sarp et h b2 g2 d3 d4 b4 g3
+sarp et h c2 g2 e3 e4 c4 a4
+sarp et h d2 g2 f3 g4 d4 b4
+sarp et h e2 c3 g3 g4 e4 c4
+sarp et h f#1 d#2 c3 d#4 c4 a4
+sarp et h g1 e2 c3 e4 c4 g3
+i 2
+sarp et h rst d#3 g3 d#4 rst e4
+sarp et h rst g3 a4 g4 rst f4
+sarp et h rst d#3 g3 d#4 rst e4
+sarp et h rst e3 a4 e4 rst f4
+sarp et h f#3 rst b4 f#4 rst g4
+sarp et h g#3 rst c4 g#4 rst a5
+sarp et h a#4 rst d4 a#5 rst b5
+sarp et h rst d4 e4 b5 rst c5
+sarp et h rst b4 c4 b5 rst a5
+sarp et h a4 rst c4 a5 rst g4
+i 1
+sarp et h g1 f2 b3 b4 g3 d3
+sarp et h c1 g1 e2 e3 c3 a3
+sarp et h c1 g1 f2 b4 g3 d3
+sarp et h c1 g1 e2 e3 c3 a3
+sarp et h c1 g1 f2 b4 g3 d3
+i 2
+sarp et h rst e3 g3 e4 rst d4
+sarp et h g2 rst c3 g3 rst a4
+sarp et h e3 rst g3 e4 rst d4
+sarp et h rst g2 c3 g3 rst a4
+sarp et h rst e3 g3 e4 rst d4
+i 1
+sarp et h c1 g1 g2 a4 f3 e3
+sarp et h c1 g1 g2 a4 f3 e3
+sarp et h c1 g1 g2 a4 f3 e3
+sarp et h c1 g1 g2 a4 f3 e3
+sarp .6 12 c1 g1 c2 e2 g2 c3 e3
+i 2
+sarp et h rst c3 f3 c4 rst g3
+sarp et h rst c3 f3 c4 rst g3
+sarp et h rst c3 f3 c4 rst g3
+sarp et h rst c3 f3 c4 rst g3

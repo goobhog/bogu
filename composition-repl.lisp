@@ -58,7 +58,6 @@
     (unless (eq (car cmd) 'quit)
       (cond ((eq (car cmd) 'reset) (reset-bogu) (composition-repl))
 	    ((composition-eval cmd) (push line *bogu-code*) (composition-repl))
-	    ((composition-eval cmd) (composition-repl))
 	    (t (format t "unknown symbol~%") (composition-repl))))))
 
 (defun bogu ()
