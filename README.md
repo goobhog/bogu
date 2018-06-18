@@ -1,1 +1,1 @@
-Bogu uses SBCL http://www.sbcl.org/ and Csound https://csound.com/
+bogu uses SBCL http://www.sbcl.org/ and Csound https://csound.com/
