@@ -127,7 +127,8 @@
 		       :if-exists :supersede)
     (with-standard-io-syntax
       (dolist (i (reverse *bogu-code*))
-	(if (not (or (string= (stringem "load " #\" filename #\") i)
+	(if (not (or (null (coerce i 'list))
+		     (string= (stringem "load " #\" filename #\") i)
 		     (string= "pla" i :start2 0 :end2 3)
 		     (string= "sav" i :start2 0 :end2 3)))
 	    (format out "~{~a~%~}" (list i))))))
@@ -143,8 +144,12 @@
     (when in
       (loop for line = (read-line in nil)
 	 while line do
-	   (push line *bogu-code*)
-	   (eval (bogu-reader line))))))
+	   (if (not (null (coerce line 'list)))
+	       (progn
+		 (push line *bogu-code*)
+		 (eval (bogu-reader line)))
+	       (push line *bogu-code*)))))
+  (format t "loaded \"~~/bogu/compositions/~a/~a.bogu\"~%" filename filename))
 
 (defun play (filename)
   "Creates and plays a csound .csd file in the compositions folder matching the filename input."

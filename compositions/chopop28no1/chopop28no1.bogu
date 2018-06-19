@@ -55,7 +55,7 @@ sarp et h rst e3 a4 e4 rst f4
 sarp et h f#3 rst b4 f#4 rst g4
 sarp et h g#3 rst c4 g#4 rst a5
 sarp et h a#4 rst d4 a#5 rst b5
-sarp et h rst d4 e4 b5 rst c5
+sarp et h rst d4 e4 d5 rst c5
 sarp et h rst b4 c4 b5 rst a5
 sarp et h a4 rst c4 a5 rst g4
 i 1
