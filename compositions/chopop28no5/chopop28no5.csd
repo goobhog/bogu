@@ -13,16 +13,16 @@ nchnls = 2
 
 instr 1
 
-ares linen .5, .03, p3, .02
-asig oscil ares, cpspch(p4)
+ares linen .5, .03, p3, .03
+asig poscil ares, cpspch(p4)
      outs asig,asig
 
 endin
 
 instr 2
 
-ares linen .5, .03, p3, .02
-asig oscil ares, cpspch(p4)
+ares linen .5, .03, p3, .03
+asig poscil ares, cpspch(p4)
      outs asig,asig
 
 endin
@@ -30,7 +30,7 @@ endin
 </CsInstruments>
 <CsScore>
 
-t 0 80
+t 0 88
 
 i 1 0 0.16666667 8.11
 i 1 0.16666667 0.16666667 8.09

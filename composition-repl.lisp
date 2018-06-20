@@ -1,6 +1,8 @@
-(defparameter *allowed-commands* '(seq    play   rpt   rst  save bpm help
-				   i      reset  chord sarp del  %   defchord
-				   chords defseq seqs  bogu-load
+
+(defparameter *allowed-commands* '(seq    play   rpt       rst   save
+				   help   i      reset     chord sarp
+				   del    %      defchord  bpm   where
+				   chords defseq bogu-load seqs
 				   a0  a1  a2  a3  a4  a5  a6  a7  a8
 				   a#0 a#1 a#2 a#3 a#4 a#5 a#6 a#7 a#8
 				   bb0 bb1 bb2 bb3 bb4 bb5 bb6 bb7 bb8
@@ -22,7 +24,6 @@
 				   g0  g1  g2  g3  g4  g5  g6  g7
 				   g#0 g#1 g#2 g#3 g#4 g#5 g#6 g#7
 				   ab0 ab1 ab2 ab3 ab4 ab5 ab6 ab7))
-(defparameter *bogu-code* '())
 
 (defun composition-eval (sexp)
   "Tests commands against allowed commands list and evaluates them."
@@ -31,25 +32,6 @@
 	(eval sexp)
 	t)
       '()))
-
-(defun bogu-reader (code)
-  "Formats bogu code for lisp reader."
-  (let ((cmd (read-from-string
-	      (concatenate 'string "(" code ")"))))
-    (cond ((or (and (eql (car cmd) 'chord)
-		    (member (cdr cmd) *allowed-commands*))
-	       (and (eq (car cmd) 'seq)
-		    (member (cdr cmd) *allowed-commands*)))
-	   (append (list (car cmd) (quote-it (cadr cmd)))
-		   (mapcar #'fn-it (cddr cmd))))
-	  ((and (eql (car cmd) 'sarp)
-		(member (cddr cmd) *allowed-commands*))
-	   (append (list (elt cmd 0)
-			 (quote-it (elt cmd 1))
-			 (quote-it (elt cmd 2)))
-		   (mapcar #'fn-it (cdddr cmd))))
-	  ((eq (car cmd) 'load) (append '(bogu-load) (cdr cmd)))
-	  (t (cons (car cmd) (mapcar #'quote-it (cdr cmd)))))))
 
 (defun composition-repl ()
   "REPL interface for bogu."

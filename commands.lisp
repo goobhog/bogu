@@ -1,4 +1,4 @@
-;(in-package :bogu)
+;;global variables-------------------
 
 (defparameter *itime* 0)
 (defparameter *bpm* '(60 0 "t"))
@@ -8,6 +8,9 @@
 (defparameter *last-sequence* '())
 (defparameter *chords* '())
 (defparameter *sequences* '())
+(defparameter *bogu-code* '())
+
+;;bogu functions----------------------
 
 (defun reset-bogu ()
   "Resets all global variables to their default values."
@@ -24,8 +27,7 @@
 (defun i (n)
   "Changes the instrument receiving input."
   (if (not (assoc n *instruments*))
-	(push `(,n . 0) *instruments*)
-	nil)
+	(push `(,n . 0) *instruments*))
   (setf (cdr (assoc *current-instrument* *instruments*)) *itime*)
   (setf *itime* (cdr (assoc n *instruments*)))
   (setf *current-instrument* n))
@@ -44,7 +46,9 @@
   "Pushes a chord to the score list."
   (let ((r (rtm rval)))
     (if (assoc (car notes) *chords*)
-	(eval (append `(chord ,r) (mapcar #'fn-it (cdr (assoc (car notes) *chords*)))))
+	(eval (append `(chord ,r)
+		      (mapcar #'fn-it
+			      (cdr (assoc (car notes) *chords*)))))
 	(progn
 	  (dolist (i notes)
 	    (incf *current-instrument* 0.01)
@@ -74,7 +78,9 @@
   (setf *last-sequence* '())
   (let ((r (rtm rval)))
     (if (assoc (car notes) *sequences*)
-	(eval (append `(seq ,r) (mapcar #'fn-it (cdr (assoc (car notes) *sequences*)))))
+	(eval (append `(seq ,r)
+		      (mapcar #'fn-it
+			      (cdr (assoc (car notes) *sequences*)))))
 	(dolist (i notes)
 	  (funcall i r)))
     (setf *last-sequence* (flatten `(seq ,r ,notes)))))
@@ -84,7 +90,9 @@
   (let ((r (rtm rval))
 	(s (rtm sval)))
     (if (assoc (car notes) *sequences*)
-	(eval (append `(sarp ,r ,s) (mapcar #'fn-it (cdr (assoc (car notes) *sequences*)))))
+	(eval (append `(sarp ,r ,s)
+		      (mapcar #'fn-it
+			      (cdr (assoc (car notes) *sequences*)))))
 	(progn
 	  (dotimes (i (length notes))
 	    (incf *current-instrument* 0.01)
@@ -96,20 +104,28 @@
 (defun % ()
   "Evaluates last sequence list."
   (if (assoc (third *last-sequence*) *sequences*)
-      (eval (cons (car *last-sequence*) (mapcar #'quote-it (cdr *last-sequence*))))
       (eval (cons (car *last-sequence*)
-		  (cons (quote-it (cadr *last-sequence*)) (cddr *last-sequence*))))))
+		  (mapcar #'quote-it (cdr *last-sequence*))))
+      (eval (cons (car *last-sequence*)
+		  (cons (quote-it (cadr *last-sequence*))
+			(cddr *last-sequence*))))))
 
 (defun rst (rval)
   "Increases the itime of next note."
   (incf *itime* (rtm rval)))
 
-(defun bpm (n)
+(defun bpm (n); add optional nth bpms
   "Sets beats per minute."
   (setf *bpm* '())
   (push "t" *bpm*)
   (push 0 *bpm*)
   (push n *bpm*))
+
+(defun where (div)
+  "Given a divisor, displays the current measure and beat as the itime divided by the divisor and their remainder respectively."
+  (format t "~%~%Measure: ~d~%Beat:~d~%~%"
+	  (1+ (floor (/ *itime* div)))
+	  (mod *itime* div)))
 
 (defun note (i rval nval oval)
   "Pushes note data to score list."
@@ -158,8 +174,6 @@
 		      (list (namestring (comp-path filename (bogu-folder filename) "csd")))))
 
   
-            
-
 ;; note functions ----------------------------
 
 ;; a -------------

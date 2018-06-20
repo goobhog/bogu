@@ -54,3 +54,22 @@
 	((eq 'sq rval) (/ 0.5 5.0))
 	((eq 'tq rval) (/ 0.25 5.0))
 	((eq 'hq rval) (/ 4.0 5.0))))
+
+(defun bogu-reader (code)
+  "Formats bogu code for lisp reader."
+  (let ((cmd (read-from-string
+	      (concatenate 'string "(" code ")"))))
+    (cond ((or (and (eql (car cmd) 'chord)
+		    (member (cdr cmd) *allowed-commands*))
+	       (and (eq (car cmd) 'seq)
+		    (member (cdr cmd) *allowed-commands*)))
+	   (append (list (car cmd) (quote-it (cadr cmd)))
+		   (mapcar #'fn-it (cddr cmd))))
+	  ((and (eql (car cmd) 'sarp)
+		(member (cddr cmd) *allowed-commands*))
+	   (append (list (elt cmd 0)
+			 (quote-it (elt cmd 1))
+			 (quote-it (elt cmd 2)))
+		   (mapcar #'fn-it (cdddr cmd))))
+	  ((eq (car cmd) 'load) (append '(bogu-load) (cdr cmd)))
+	  (t (cons (car cmd) (mapcar #'quote-it (cdr cmd)))))))
