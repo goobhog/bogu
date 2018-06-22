@@ -6,7 +6,7 @@
 (defparameter *current-instrument* 1)
 (defparameter *score* '())
 (defparameter *last-sequence* '())
-(defparameter *chords* '())
+(defparameter *polys* '())
 (defparameter *sequences* '())
 (defparameter *bogu-code* '())
 
@@ -20,7 +20,7 @@
   (setf *current-instrument* 1)
   (setf *score* '())
   (setf *last-sequence* '())
-  (setf *chords* '())
+  (setf *polys* '())
   (setf *sequences* '())
   (setf *bogu-code* '()))
 
@@ -32,23 +32,23 @@
   (setf *itime* (cdr (assoc n *instruments*)))
   (setf *current-instrument* n))
 
-(defun defchord (name &rest notes)
-  "Pushes a user defined chord to chords list."
-  (push (cons name notes) *chords*))
+(defun defpoly (name &rest notes)
+  "Pushes a user defined poly to polys list."
+  (push (cons name notes) *polys*))
 
-(defun chords ()
-  "Displays current ledger of chord definitions."
-  (if *chords*
-      (format t "~%~{~a ~%~}~%" (reverse *chords*))
+(defun polys ()
+  "Displays current ledger of poly definitions."
+  (if *polys*
+      (format t "~%~{~a ~%~}~%" (reverse *polys*))
       (format t "~%nothing here yet...~%~%")))
   
-(defun chord (rval &rest notes)
-  "Pushes a chord to the score list."
+(defun poly (rval &rest notes)
+  "Pushes a poly to the score list."
   (let ((r (rtm rval)))
-    (if (assoc (car notes) *chords*)
-	(eval (append `(chord ,r)
+    (if (assoc (car notes) *polys*)
+	(eval (append `(poly ,r)
 		      (mapcar #'fn-it
-			      (cdr (assoc (car notes) *chords*)))))
+			      (cdr (assoc (car notes) *polys*)))))
 	(progn
 	  (dolist (i notes)
 	    (incf *current-instrument* 0.01)
@@ -74,15 +74,18 @@
       (format t "~%nothing here yet...~%~%")))
 
 (defun seq (rval &rest notes)
-  "Pushes a sequence of notes or rests with the same rhythmic value to score list and replaces last sequence list with a list of a call to seq."
   (setf *last-sequence* '())
   (let ((r (rtm rval)))
-    (if (assoc (car notes) *sequences*)
-	(eval (append `(seq ,r)
-		      (mapcar #'fn-it
-			      (cdr (assoc (car notes) *sequences*)))))
-	(dolist (i notes)
-	  (funcall i r)))
+    (dolist (i notes)
+      (cond ((assoc i *polys*)
+	     (eval (append `(poly ,r)
+			   (mapcar #'fn-it
+				   (cdr (assoc i *polys*))))))
+	    ((assoc i *sequences*)
+	     (eval (append `(seq ,r)
+			   (mapcar #'fn-it
+				   (cdr (assoc i *sequences*))))))
+	    (t (funcall i r))))
     (setf *last-sequence* (flatten `(seq ,r ,notes)))))
 
 (defun sarp (rval sval &rest notes)
@@ -103,12 +106,28 @@
 
 (defun % ()
   "Evaluates last sequence list."
-  (if (assoc (third *last-sequence*) *sequences*)
+  (if (not (assoc (third *last-sequence*) *sequences*))
       (eval (cons (car *last-sequence*)
 		  (mapcar #'quote-it (cdr *last-sequence*))))
       (eval (cons (car *last-sequence*)
 		  (cons (quote-it (cadr *last-sequence*))
 			(cddr *last-sequence*))))))
+
+(defun rpt (n &optional (s 0))
+  "Beginning at the sth (default zeroth) last note, repeats the last n notes (keeping their rhythmic value."
+  ;;first adding the lengths of the notes upto first repeated note (beginning from last note in score) and setting that quantity local variable tm
+  (let ((tm (do ((l nil) (i 0 (1+ i)))
+		((= i (* 5 n)) (reduce #'+ l))
+	      (if (zerop (mod (+ 4 i) 5))
+		  (if (< (mod (elt *score* (+ 2 i)) 1) 0.015);;ignoring all but one of notes belonging to polys or sarps
+		  (push (elt *score* i) l))))))
+    (setf *score*
+	  (do ((l nil) (i (* 5 s) (1+ i)))
+	      ((= i (* 5 n)) (flatten (adjoin (reverse l) *score*)))
+	    (if (zerop (mod (+ 3 i) 5))
+		(push (+ tm (elt *score* i)) l) ;;adding note's itime to tm
+		(push (elt *score* i) l)))))
+  (setf *itime* (+ (elt *score* 2) (elt *score* 1))))
 
 (defun rst (rval)
   "Increases the itime of next note."
@@ -123,7 +142,7 @@
 
 (defun where (div)
   "Given a divisor, displays the current measure and beat as the itime divided by the divisor and their remainder respectively."
-  (format t "~%~%Measure: ~d~%Beat:~d~%~%"
+  (format t "~%~%Measure: ~d~%Beat:    ~d~%~%"
 	  (1+ (floor (/ *itime* div)))
 	  (mod *itime* div)))
 
@@ -143,13 +162,17 @@
 		       :if-exists :supersede)
     (with-standard-io-syntax
       (dolist (i (reverse *bogu-code*))
-	(if (not (or (null (coerce i 'list))
-		     (string= (stringem "load " #\" filename #\") i)
-		     (string= "pla" i :start2 0 :end2 3)
-		     (string= "sav" i :start2 0 :end2 3)))
-	    (format out "~{~a~%~}" (list i))))))
+	(cond ((string= "%" i)
+	       (format out "~{~a~}~%"  (list i))))
+	(cond ((not (or (string= "%" i) ;;this command's single character length messes up checks to string= below
+			(null (coerce i 'list))
+			(string= (stringem "load " #\" filename #\") i);;preventing endless calls to load
+			(string= "pla" i :start2 0 :end2 3)
+			(string= "sav" i :start2 0 :end2 3)))
+	       (format out "~{~a~%~}" (list i)))))))
   (bogu->csd filename)
-  (format t "saved \"~~/bogu/compositions/~a/~a.bogu\"~%" filename filename))
+  (format t "saved \"~~/bogu/compositions/~a/~a.bogu\"~%" filename filename)
+  (format t "saved \"~~/bogu/compositions/~a/~a.csd\"~%" filename filename))
    
 (defun bogu-load (filename)
   "Reads input from a .bogu file."
