@@ -1,0 +1,80 @@
+bpm 45
+defpoly dmin d2 f2 a3 d3 d4 f4 a5 d5
+defpoly amin2inv e2 a3 c3 e3 e4 a5 c5 e5
+defpoly fmaj f2 a3 c3 f3 f4 a5 c5 f5
+defpoly dmin6 d2 f2 bb3 d3 d4 f4 bb5 d5
+defpoly cmaj c2 e2 g2 c3 c4 e4 g4 c5
+defpoly fmaj1inv a2 c2 f2 a3 a4 c4 f4 a5
+defpoly bbmaj bb2 d2 f2 bb3 bb4 d4 f4 bb5
+defpoly ebmaj1inv g1 bb2 eb2 g2 g3 bb4 eb4 g4
+defpoly dmin2inv a2 d2 f2 a3 a4 d4 f4 a5
+defpoly amin1inv c2 e2 a3 c3 c4 e4 a5 c5
+seq q d2 e2
+f2 h
+d2 q
+c2 h
+seq e a2 bb2 g1 a2
+c2 h
+d2 q
+c2 h
+seq e a2 bb2 c2 d2
+e2 h
+seq q d2 c2
+d2 w
+i 2
+seq q d3 e3
+f3 h
+d3 q
+c3 h
+seq e a3 bb3 g2 a3
+c3 h
+d3 q
+c3 h
+seq e a3 bb3 c3 d3
+e3 h
+seq q d3 c3
+d3 w
+seq q dmin amin2inv
+poly h fmaj
+poly q dmin6
+poly h cmaj
+seq e fmaj1inv bbmaj ebmaj1inv dmin2inv
+poly h cmaj
+poly q dmin6
+poly h cmaj
+seq e fmaj1inv bbmaj amin1inv dmin
+poly h amin2inv
+seq q dmin amin1inv
+poly w dmin
+poly q d2 a3 f3 a4 d4
+poly q a2 e2 c3 a4 c4 e4
+poly h f1 c2 a3 a4 c4 f4
+poly q bb2 f2 f3 bb4 d4
+poly h c2 g2 e3 g3 c4
+poly e f2 a3 c3 f3 a4
+poly e bb2 f2 d3 f3 bb4
+poly e eb2 g2 bb3 eb3 g3
+poly e d2 a3 d3 f3 a4
+poly h c2 g2 e3 g3 c4
+poly q g1 d2 g2 g3 bb4 d4
+poly h c2 g2 e3 g3 c4
+poly e a2 f2 a3 c3 f3 a4
+poly e bb2 f2 d3 f3 bb4
+poly e a2 e2 c3 e3 a4 c4
+poly e d2 a3 f3 a4 d4
+poly h a2 e2 c3 a4 c4 e4
+poly q d2 a3 f3 a4 d4
+poly q a2 e2 c3 e3 a4 c4
+poly w d2 a3 f3 a4 d4
+seq q dmin amin2inv
+poly h fmaj
+poly q dmin6
+poly h cmaj
+seq e fmaj1inv bbmaj ebmaj1inv dmin2inv
+poly h cmaj
+poly q dmin6
+poly h cmaj
+seq e fmaj1inv bbmaj amin1inv dmin
+poly h amin2inv
+seq q dmin amin1inv
+poly w dmin
