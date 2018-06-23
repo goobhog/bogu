@@ -28,34 +28,6 @@
   "Checks for a specified directory in bogu/compositions and creates one if it doesn't exist."
   (ensure-directories-exist (stringem 'bogu/compositions/ name #\/)))
 
-(defun rtm (rval)
-  "Returns rhythm quantity for corresponding rhythm symbol. If given a number, it simply returns that number."
-  (cond ((numberp rval) rval)
-	((eq 'q rval) 1.0)
-	((eq 'e rval) 0.5)
-	((eq 's rval) 0.25)
-	((eq 'h rval) 2.0)
-	((eq 'w rval) 4.0)
-	((eq 't rval) 0.125)
-	((eq 'q. rval) 1.5)
-	((eq 'q.. rval) 1.75)
-	((eq 'e. rval) 0.75)
-	((eq 'e.. rval) 0.875)
-	((eq 's. rval) 0.375)
-	((eq 's.. rval) 0.4375)
-	((eq 'h. rval) 3.0)
-	((eq 'h.. rval) 3.5)
-	((eq 'qt rval) (/ 2.0 3.0))
-	((eq 'et rval) (/ 1.0 3.0))
-	((eq 'st rval) (/ 0.5 3.0))
-	((eq 'tt rval) (/ 0.25 3.0))
-	((eq 'ht rval) (/ 4.0 3.0))
-	((eq 'qq rval) (/ 4.0 5.0))
-	((eq 'eq rval) (/ 2.0 5.0))
-	((eq 'sq rval) (/ 1 5.0))
-	((eq 'tq rval) (/ 0.5 5.0))
-	((eq 'hq rval) (/ 8.0 5.0))))
-
 (defun bogu-reader (code)
   "Formats bogu code for lisp reader."
   (if *pas*
@@ -77,3 +49,47 @@
 		   (mapcar #'fn-it (cdddr cmd))))
 	  ((eq (car cmd) 'load) (append '(bogu-load) (cdr cmd)))
 	  (t (cons (car cmd) (mapcar #'quote-it (cdr cmd)))))))
+
+(defun comp-path (filename directory type)
+  "Creates a pathname with specified name of specified type in specified directory."
+  (make-pathname
+   :directory `(:relative ,directory)
+   :type type
+   :name filename))
+
+(defun bogu->csd (filename)
+  "Prints bogu score data to csound .csd file."
+  (with-open-file (out (comp-path filename (bogu-folder filename) "csd")
+		       :direction :output
+		       :if-exists :supersede)
+    (with-standard-io-syntax
+      (format out "<CsoundSynthesizer>
+<CsOptions>
+
+-odac
+
+</CsOptions>
+<CsInstruments>
+
+sr = 44100
+ksmps = 32
+nchnls = 2
+0dbfs = 4
+
+~{instr ~d
+ares linen .5, .03, p3, .02
+asig oscil ares, cpspch(p4)
+     outs asig,asig
+
+endin~%~%~}
+</CsInstruments>
+<CsScore>
+
+~{~a ~d ~d~}
+
+~{~a ~d ~d ~d ~d~%~}
+e
+</CsScore>
+</CsoundSynthesizer>"
+	      (loop for i from 1 to (length *instruments*) collecting i)
+	      (reverse *bpm*) (reverse *score*)))))
