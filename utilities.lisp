@@ -25,6 +25,7 @@
   (format nil "~{~a~^~}" items))
 
 (defun bogu-folder (name)
+  "Checks for a specified directory in bogu/compositions and creates one if it doesn't exist."
   (ensure-directories-exist (stringem 'bogu/compositions/ name #\/)))
 
 (defun rtm (rval)
@@ -49,17 +50,20 @@
 	((eq 'st rval) (/ 0.5 3.0))
 	((eq 'tt rval) (/ 0.25 3.0))
 	((eq 'ht rval) (/ 4.0 3.0))
-	((eq 'qq rval) (/ 2.0 5.0))
-	((eq 'eq rval) (/ 1.0 5.0))
-	((eq 'sq rval) (/ 0.5 5.0))
-	((eq 'tq rval) (/ 0.25 5.0))
-	((eq 'hq rval) (/ 4.0 5.0))))
+	((eq 'qq rval) (/ 4.0 5.0))
+	((eq 'eq rval) (/ 2.0 5.0))
+	((eq 'sq rval) (/ 1 5.0))
+	((eq 'tq rval) (/ 0.5 5.0))
+	((eq 'hq rval) (/ 8.0 5.0))))
 
 (defun bogu-reader (code)
   "Formats bogu code for lisp reader."
+  (if *pas*
+      (if (not (string= code "pas"))
+	  (push code (cdr (assoc (length *passages*) *passages*)))))
   (let ((cmd (read-from-string
 	      (concatenate 'string "(" code ")"))))
-    (cond ((or (and (eql (car cmd) 'chord)
+    (cond ((or (and (eql (car cmd) 'poly)
 		    (member (cdr cmd) *allowed-commands*))
 	       (and (eq (car cmd) 'seq)
 		    (member (cdr cmd) *allowed-commands*)))

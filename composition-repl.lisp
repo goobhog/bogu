@@ -2,7 +2,8 @@
 (defparameter *allowed-commands* '(seq    play   rpt       rst   save
 				   help   i      reset     poly  sarp
 				   del    %      defpoly   bpm   where
-				   polys  defseq bogu-load seqs
+				   polys  defseq bogu-load seqs  pas
+				   psgs   psg
 				   a0  a1  a2  a3  a4  a5  a6  a7  a8
 				   a#0 a#1 a#2 a#3 a#4 a#5 a#6 a#7 a#8
 				   bb0 bb1 bb2 bb3 bb4 bb5 bb6 bb7 bb8

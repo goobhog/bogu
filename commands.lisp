@@ -9,6 +9,8 @@
 (defparameter *polys* '())
 (defparameter *sequences* '())
 (defparameter *bogu-code* '())
+(defparameter *passages* '())
+(defparameter *pas* nil)
 
 ;;bogu functions----------------------
 
@@ -22,12 +24,37 @@
   (setf *last-sequence* '())
   (setf *polys* '())
   (setf *sequences* '())
-  (setf *bogu-code* '()))
+  (setf *bogu-code* '())
+  (setf *pas* nil)
+  (setf *passages* '()))
+
+(defun pas ()
+  "Sets pas (passage) variable to t if nil, nil if t."
+  (if (null *pas*)
+      (progn
+	(setf *pas* t)
+	(let ((n 1))
+	  (if (not (assoc n *passages*))
+	      (push (cons n nil) *passages*)
+	      (progn
+		(if (cdr (assoc n *passages*))
+		    (push (cons (1+ n) nil) *passages*))))))
+      (progn
+	(setf (cdr (assoc (length *passages*) *passages*))
+	      (reverse (cdr (assoc (length *passages*) *passages*))))
+	(setf *pas* nil)))
+  (format t "passage ~:[end~;start~]~%" *pas*))
+
+(defun psgs ()
+  "Displays all written passages."
+  (if *passages*
+      (format t "~%~{~{~a~%~}~}~%" (reverse *passages*))
+      (format t "~%nothing here yet...~%~%")))
 
 (defun i (n)
   "Changes the instrument receiving input."
   (if (not (assoc n *instruments*))
-	(push `(,n . 0) *instruments*))
+      (push `(,n . 0) *instruments*))
   (setf (cdr (assoc *current-instrument* *instruments*)) *itime*)
   (setf *itime* (cdr (assoc n *instruments*)))
   (setf *current-instrument* n))
@@ -74,6 +101,7 @@
       (format t "~%nothing here yet...~%~%")))
 
 (defun seq (rval &rest notes)
+  "Pushes sequence of notes to score list, replaces last sequence list with said sequence."
   (setf *last-sequence* '())
   (let ((r (rtm rval)))
     (dolist (i notes)
@@ -113,14 +141,19 @@
 		  (cons (quote-it (cadr *last-sequence*))
 			(cddr *last-sequence*))))))
 
+(defun psg (n)
+  "Repeat a specified passage."
+  (dolist (i (cdr (assoc n *passages*)))
+    (eval (bogu-reader i))))
+
 (defun rpt (n &optional (s 0))
   "Beginning at the sth (default zeroth) last note, repeats the last n notes (keeping their rhythmic value."
-  ;;first adding the lengths of the notes upto first repeated note (beginning from last note in score) and setting that quantity local variable tm
+   ;;first adding the lengths of the notes upto first repeated note (beginning from last note in score) and setting that quantity local variable tm
   (let ((tm (do ((l nil) (i 0 (1+ i)))
 		((= i (* 5 n)) (reduce #'+ l))
 	      (if (zerop (mod (+ 4 i) 5))
 		  (if (< (mod (elt *score* (+ 2 i)) 1) 0.015);;ignoring all but one of notes belonging to polys or sarps
-		  (push (elt *score* i) l))))))
+		      (push (elt *score* i) l))))))
     (setf *score*
 	  (do ((l nil) (i (* 5 s) (1+ i)))
 	      ((= i (* 5 n)) (flatten (adjoin (reverse l) *score*)))
