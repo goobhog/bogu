@@ -1,4 +1,4 @@
-
+;; CURRENTLY NOT COMPLETE OR CORRECT!
 (defun help-loop ()
   (let* ((txt (read)))
     (cond ((eq 'n txt) (format t "~%Each note of each octave is its own symbol, 
@@ -35,9 +35,9 @@ type seq rval nval nval...etc.
 e.g. seq q c3 e3 g3 bb4 rst f2 a3 c3 f3
 seq will take as many notes and rests as you give it.
 To rewrite the last sequence simply type %~%~%") (help-loop))
-	  ((eq 'c txt) (format t "~%To write a chord in one instrument
-type chord rval nval nval...etc.
-e.g. chord 2 d3 f#3 c4 f4 bb5
+	  ((eq 'p txt) (format t "~%To write a chord in one instrument
+type poly rval nval nval...etc.
+e.g. poly 2 d3 f#3 c4 f4 bb5
 A sustained arpeggio is written by typing sarp followed by
 the rhythmic value and length of whole arpeggio
 e.g. sarp .5 4 a3 e3 g3 b4 c4 e4~%~%") (help-loop))
@@ -45,13 +45,13 @@ e.g. sarp .5 4 a3 e3 g3 b4 c4 e4~%~%") (help-loop))
 e.g. bpm 140
 The default is 60.~%~%") (help-loop))
 	  ((eq 'd txt) (format t "~%The user may define her own chords or sequences by typing 
-defchord name nval nval nval...etc. or defs name nval nval nval...etc. respecttiely.
-e.g. defchord bbmaj9 bb2 f2 d3 a4 d4
+defpoly name nval nval nval...etc. or defseq name nval nval nval...etc. respectively.
+e.g. defpoly bbmaj9 bb2 f2 d3 a4 c4
      defseq bbscale bb3 c3 d3 eb3 f3 g3 a4 bb4
-Chords and sequences can then be given as parameters to the chord and seq function,
-e.g. chord h. bbmaj9
+Chords and sequences can then be given as parameters to the poly and seq functions,
+e.g. poly h. bbmaj9
      seq et bbscale 
-To view the current ledger of chord definitions, type chords~%~%") (help-loop))
+To view the current ledger of chord or sequence definitions, type polys or seqs~%~%") (help-loop))
 	  ((eq 'i txt) (format t "~%Typing i followed by a number
 will change which instrument you're writing to,
 setting the itime to where you left off with that instrument;
@@ -69,5 +69,5 @@ To quit, type quit~%~%") (help-loop))
 	  ((eq 'e txt) (format t "~%exit~%~%")))))
 
 (defun help ()
-  (format t "~%Help Menu~%(n)otes and rests~%(s)equences~%(c)hords and sustained arpeggios~%(b)pm~%(i)nstruments~%(d)efinitions~%(l)oad, save, play, reset and quit~%(e)xit help menu~%~%")
+  (format t "~%Help Menu~%(n)otes and rests~%(s)equences~%(p)olys and sustained arpeggios~%(b)pm~%(i)nstruments~%(d)efinitions~%(l)oad, save, play, reset and quit~%(e)xit help menu~%~%")
   (help-loop))

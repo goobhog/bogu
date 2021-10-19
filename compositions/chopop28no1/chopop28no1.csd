@@ -10,21 +10,20 @@ sr = 44100
 ksmps = 32
 nchnls = 2
 0dbfs = 4
+giwave	ftgen	2, 0, 4096, 10, 0.216, 0.130, 0.043, 0.026, 0.016, 0.011, 0.008, 0.007, 0.004, 0.001, 0.002, 0.003
 
 instr 1
+    ares linen .4, .03, p3, .02
+    asig poscil ares, cpspch(p4), 2
 
-ares linen .5, .01, p3, .01
-asig oscil ares, cpspch(p4)
-     outs asig,asig
-
+    outs asig, asig
 endin
 
 instr 2
+    ares linen .4, .03, p3, .02
+    asig poscil ares, cpspch(p4), 2
 
-ares linen .5, .01, p3, .01
-asig oscil ares, cpspch(p4)
-     outs asig,asig
-
+    outs asig, asig
 endin
 
 </CsInstruments>

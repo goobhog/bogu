@@ -38,7 +38,7 @@
 	      (push (cons n nil) *passages*)
 	      (progn
 		(if (cdr (assoc n *passages*))
-		    (push (cons (1+ n) nil) *passages*))))))
+		    (push (cons (1+ (first (first *passages*))) nil) *passages*))))))
       (progn
 	(setf (cdr (assoc (length *passages*) *passages*))
 	      (reverse (cdr (assoc (length *passages*) *passages*))))

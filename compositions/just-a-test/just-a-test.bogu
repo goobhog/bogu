@@ -1,0 +1,20 @@
+defpoly p0 bb2 f#3 d4 ab4
+defpoly p1 c2 f#3 eb4 g4
+defpoly p2 eb2 g3 db4 gb4
+defpoly p3 d2 a3 c4 f#4
+defpoly p4 g1 b3 d4 f#4
+defpoly p5 g1 b3 c#4 e4
+defpoly p6 g2 c3 c4 f4
+defpoly p7 c2 d3 b4 f#4
+defpoly p8 c1 c2 g2 c3 g3 d4 a5 e5 b6 f#6
+poly h p0
+poly h p1
+poly h p2
+poly h p3
+poly e p4
+poly e p5
+poly s p6
+poly s p7
+poly w p8
+rpt 42
+rpt 42

@@ -8,7 +8,7 @@ sarp st qt c#4 b4 e4 a4
 seq st c#3 f#3
 sarp st et d3 a3
 seq st a#3 b3
-chord st c#3 f#3
+poly st c#3 f#3
 e3 st
 i 2
 rst et
@@ -22,26 +22,26 @@ sarp st et d1 f#2
 seq st g2 g1 a2 g2
 i 1
 sarp st qt d3 d4 f#3 a4
-chord st g#3 c#4
+poly st g#3 c#4
 b4 st
 seq st e3 a4 e#3 f#4
-chord st g#3 c#4
+poly st g#3 c#4
 b4 st
 a4 st
 sarp st et e4 e3
 a4 st
-chord st d#3 c4
+poly st d#3 c4
 b4 st
 sarp st et b3 e3
 seq st c3 e3
-chord st d#3 b4
+poly st d#3 b4
 f#3 st
 sarp st qt e3 e4 g3 b4
-chord st a#4 d4
+poly st a#4 d4
 c#4 st
 sarp st et b4 f#3
 seq st g3 b3
-chord st a#4 d4
+poly st a#4 d4
 c#4 st
 i 2
 sarp st qt f#2 b2 d3 f#2
@@ -96,11 +96,11 @@ sarp st qt c#3 b4 e4 a4
 seq st c#3 f#3
 sarp st et d3 a3
 seq st a#3 b3
-chord st c#3 g3
+poly st c#3 g3
 f#3 st
 sarp st et d3 d4
 seq st f#3 a4
-chord st g#3 c4
+poly st g#3 c4
 b4 st
 i 2
 sarp st et f#1 a3
@@ -118,23 +118,23 @@ sarp st et f#2 b2
 seq st d3 f2 e2 d3
 i 1
 seq st e3 a4 f3 a4
-chord st g#3 c4
+poly st g#3 c4
 b4 st
 a4 st
 sarp st et e4 e3
 a4 st
-chord st d#3 c4
+poly st d#3 c4
 b4 st
 sarp st et b3 e3
 seq st c3 e3
-chord st d#3 g3
+poly st d#3 g3
 f#3 st
 sarp st qt e3 e4 g3 b4
-chord st a#4 d4
+poly st a#4 d4
 c#4 st
 sarp st et b4 f#3
 seq st g3 b4
-chord st a#4 d4
+poly st a#4 d4
 c#4 st
 i 2
 seq st c3 a3 d3 d2 e2 d3
@@ -193,7 +193,7 @@ sarp st qt a3 a1 d1 a2
 sarp st qt a3 a2 d1 a2
 sarp st qt a3 a2 d1 a2
 sarp st et a3 a1
-chord e d1 f#5
+poly e d1 f#5
 rst e
 sarp tt e. a2 e2 c#3 g3 e4 a5
 rst s
@@ -202,4 +202,10 @@ rst h
 d1 q.
 i 2
 rst e
-chord q d2 a3 d3 f#3 d4 f#4
+poly q d2 a3 d3 f#3 d4 f#4
+bogu-load "chopop28no5"
+psgs
+polys
+seqs
+where 9
+where 2

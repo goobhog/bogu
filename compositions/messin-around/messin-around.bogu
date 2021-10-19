@@ -1,0 +1,32 @@
+bpm 85
+defseq c0 c2 g2 e3
+defseq f0 f2 a3 e3
+defseq ab0 ab2 c3 f3
+defseq g0 g2 d3 f3
+pas
+sarp e q. c0
+sarp e q. f0
+sarp e q. ab0
+sarp e q. g0
+pas
+psg 1
+psg 1
+psg 1
+i 2
+pas
+seq e c4 c4 b4 c4 d4
+seq s e4 g4
+f4 q.
+seq e rst rst b4 c4 c5 b5 a4
+seq s b4 c4 b4 c4 b4 c4 b4 c4 b4 c4 b4 c4 b4 c4 b4 d4
+pas
+psg 2
+a4 q
+seq e b4 d4
+seq st b4 c4 b4 c4 b4 c4 b4 c4 b4 c4 b4 c4
+c4 w
+i 1
+poly h d2 a3 f3 b4
+poly q d2 ab2 f3 c4
+poly q d2 g2 f3 b4
+poly w c2 g2 e3 

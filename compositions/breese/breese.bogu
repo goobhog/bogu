@@ -1,0 +1,56 @@
+bpm 132
+defseq bass0 gb1 rst bb3 rst rst
+defseq bass1 a1 rst d3 rst rst
+defseq bass2 e1 rst f#3 rst rst
+defseq bass3 db1 rst f#3 rst rst
+defseq horna0 eb4 eb4 rst c4 rst
+defseq horna1 c#4 d4 rst rst eb4
+defseq horna2 f#4 rst b5 rst f4
+defseq horna3 f4 f4 rst rst rst
+defseq hornb0 bb4 bb4 rst eb4 rst
+defseq hornb1 g4 g4 rst rst g4
+defseq hornb2 a5 rst c#4 rst bb5
+defseq hornb3 bb5 a5 rst rst rst
+pas
+seq e bass0
+seq e bass1
+seq e bass2
+seq e bass3
+pas
+i 2
+pas
+seq s horna0
+seq s horna0
+seq s horna1
+seq s horna1
+seq s horna2
+seq s horna2
+seq s horna3
+seq s horna3
+pas
+i 3
+pas
+seq s hornb0
+seq s hornb3
+seq s hornb1
+seq s hornb2
+seq s hornb2
+seq s hornb1
+seq s hornb3
+seq s hornb0
+pas
+i 1
+psg 1
+psg 1
+psg 1
+psg 1
+i 2
+psg 2
+psg 2
+psg 2
+psg 2
+i 3
+psg 3
+psg 3
+psg 3
+psg 3

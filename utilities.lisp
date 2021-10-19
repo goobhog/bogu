@@ -1,5 +1,5 @@
 (defun all-positions (item list)
-  "Returns a new list of all positions an item appears in a list."
+  "Returns a new list of all positions an item appears at in a list."
   (let ((l nil))
     (dotimes (i (length list))
       (if (equal item (elt list i))
@@ -76,11 +76,12 @@ ksmps = 32
 nchnls = 2
 0dbfs = 4
 
-~{instr ~d
-ares linen .5, .03, p3, .02
-asig oscil ares, cpspch(p4)
-     outs asig,asig
+giwave	ftgen	2, 0, 4096, 10, 0.216, 0.130, 0.043, 0.026, 0.016, 0.011, 0.008, 0.007, 0.004, 0.001, 0.002, 0.003, 0.001, 0.001
 
+~{instr ~d
+ares linen .4, .03, p3, .02
+asig poscil ares, cpspch(p4), 2
+outs asig, asig
 endin~%~%~}
 </CsInstruments>
 <CsScore>
