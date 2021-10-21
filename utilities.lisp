@@ -34,7 +34,9 @@
       (if (not (string= code "pas"))
 	  (push code (cdr (assoc (length *passages*) *passages*)))))
   (let ((cmd (read-from-string
-	      (concatenate 'string "(" code ")"))))
+	      (concatenate 'string
+			   "(" (remove #\; code) ")"))))
+ ;;if a user enters ';' by accident, it would be interpreted as a comment, signaling an end-of-file error
     (cond ((or (and (eql (car cmd) 'poly)
 		    (member (cdr cmd) *allowed-commands*))
 	       (and (eq (car cmd) 'seq)

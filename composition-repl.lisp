@@ -29,24 +29,34 @@
 (defun composition-eval (sexp)
   "Tests commands against allowed commands list and evaluates them."
   (if (member (car sexp) *allowed-commands*)
-      (restart-case   ;; restart case for repl's condition handler -- nil will end up returning 'unknown symbol' in the repl - obviously can be improved upon
+      (restart-case   ;; restart case for composition-repl's condition handler
 	  (progn
 	    (eval sexp)
 	    t)
 	(skip-line () nil))
       '()))
+;; a more  verbose, intricate condition handling system should be built
+
+
+(defun error-message (code)
+  "Prints error message followed by the faulty code."
+  (format t "unknown symbol(s): ~A~%" code))
 
 (defun composition-repl ()
   "REPL interface for bogu."
-  (handler-bind ((type-error               ;; simple condition handler for now; type errors seem most common
+  (handler-bind ((type-error
 		   #'(lambda (e)
 		       (invoke-restart 'skip-line))))
+    ;; For now, type-errors seem most common, but other conditions
+    ;; do come up. Here, type-errors should automatically invoke
+    ;; skip-line while other conditions should give the option
+    ;; to invoke skip-line in the debugger
     (let* ((line (read-line))
 	   (cmd (bogu-reader line)))
       (unless (eq (car cmd) 'quit)
 	(cond ((eq (car cmd) 'reset) (reset-bogu) (composition-repl))
 	      ((composition-eval cmd) (push line *bogu-code*) (composition-repl))
-	      (t (format t "unknown symbol~%") (composition-repl)))))))
+	      (t (error-message line) (composition-repl)))))))
 
 (defun bogu ()
   "Initiates bogu."
