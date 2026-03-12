@@ -206,21 +206,27 @@
   (bogu->csd filename)
   (format t "saved \"~~/bogu/compositions/~a/~a.bogu\"~%" filename filename)
   (format t "saved \"~~/bogu/compositions/~a/~a.csd\"~%" filename filename))
-   
+
 (defun bogu-load (filename)
-  "Reads input from a .bogu file."
+  "Reads input from a .bogu file, safely handling errors on a line-by-line basis."
   (reset-bogu)
   (with-open-file (in (comp-path filename (bogu-folder filename) "bogu")
-		      :direction :input
-		      :if-does-not-exist nil)
-    (when in
-      (loop for line = (read-line in nil)
-	 while line do
-	   (if (not (null (coerce line 'list)))
-	       (progn
-		 (push line *bogu-code*)
-		 (eval (bogu-reader line)))
-	       (push line *bogu-code*)))))
+                      :direction :input
+                      :if-does-not-exist nil)
+    (if in
+        (loop for line = (read-line in nil)
+              while line do
+                (unless (string= line "") ; Skip empty lines
+                  (push line *bogu-code*)
+                  ;; Trap reading errors line-by-line
+                  (let ((cmd (handler-case (bogu-reader line)
+                               (error (e)
+                                 (format t "[File Reader Error] Skipping line: ~A~%Details: ~A~%" line e)
+                                 nil))))
+                    ;; Trap evaluation errors line-by-line
+                    (when cmd
+                      (composition-eval cmd)))))
+        (format t "Error: File ~a.bogu not found.~%" filename)))
   (format t "loaded \"~~/bogu/compositions/~a/~a.bogu\"~%" filename filename))
 
 (defun play (filename)

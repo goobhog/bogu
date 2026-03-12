@@ -26,41 +26,49 @@
 				   g#0 g#1 g#2 g#3 g#4 g#5 g#6 g#7
 				   ab0 ab1 ab2 ab3 ab4 ab5 ab6 ab7))
 
-(defun composition-eval (sexp)
-  "Tests commands against allowed commands list and evaluates them."
-  (if (member (car sexp) *allowed-commands*)
-      (restart-case   ;; restart case for composition-repl's condition handler
-	  (progn
-	    (eval sexp)
-	    t)
-	(skip-line () nil))
-      '()))
-;; a more  verbose, intricate condition handling system should be built
-
-
-(defun error-message (code)
+(defun error-message (cmd)
   "Prints error message followed by the faulty code."
-  (format t "unknown symbol(s): ~A~%" code))
+  (format t "~%[Syntax Warning] Unknown symbol or unauthorized command: ~A~%" cmd))
+
+(defun composition-eval (cmd)
+  "Tests commands against allowed commands list and evaluates them safely."
+  (if (member (car cmd) *allowed-commands*)
+      ;; handler-case acts as a try/catch for the evaluation
+      (handler-case
+          (progn
+            (eval cmd)
+            t)
+        ;; e captures the specific Lisp error so we can read it
+        (error (e)
+          (format t "~%[Execution Error] ~A~%Failed on command: ~A~%" e cmd)
+          nil))
+      (progn
+        (error-message cmd)
+        nil)))
 
 (defun composition-repl ()
-  "REPL interface for bogu."
-  (handler-bind ((type-error
-		   #'(lambda (e)
-		       (invoke-restart 'skip-line))))
-    ;; For now, type-errors seem most common, but other conditions
-    ;; do come up. Here, type-errors should automatically invoke
-    ;; skip-line while other conditions should give the option
-    ;; to invoke skip-line in the debugger
+  "REPL interface for bogu. Uses iteration instead of recursion for stability."
+  (loop
+    (format t "~%bogu> ")
+    (finish-output) ; Ensures the prompt prints before waiting for input
     (let* ((line (read-line))
-	   (cmd (bogu-reader line)))
-      (unless (eq (car cmd) 'quit)
-	(cond ((eq (car cmd) 'reset) (reset-bogu) (composition-repl))
-	      ((composition-eval cmd) (push line *bogu-code*) (composition-repl))
-	      (t (error-message line) (composition-repl)))))))
+           ;; Safely read the line in case of unmatched parentheses or formatting issues
+           (cmd (handler-case (bogu-reader line)
+                  (error (e)
+                    (format t "~%[Reader Error] Could not parse line: ~A~%Details: ~A~%" line e)
+                    nil))))
+      (when cmd
+        (cond ((eq (car cmd) 'quit)
+               (return (format t "~%Exiting bogu. Goodbye!~%")))
+              ((eq (car cmd) 'reset)
+               (reset-bogu))
+              (t
+               ;; If composition-eval succeeds, push to code history
+               (when (composition-eval cmd)
+                 (push line *bogu-code*))))))))
 
 (defun bogu ()
   "Initiates bogu."
-   (format t "Welcome to bogu
-Type 'help' for a comprehensive list of commands.~%~%")
+   (format t "Welcome to bogu~%Type 'help' for a comprehensive list of commands.~%~%")
    (reset-bogu)
    (composition-repl))
