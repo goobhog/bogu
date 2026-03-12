@@ -1,3 +1,11 @@
+(ql:quickload "cl-ppcre")
+
+(defun note-p (sym)
+  "Checks if a symbol follows the bogu note pattern (e.g., c4, f#3, bb2)."
+  (let ((str (string-downcase (symbol-name sym))))
+    ;; Pattern: 1-2 letters (a-g, optionally # or b) followed by a digit (0-8)
+    (cl-ppcre:scan "^[a-g][#b]?[0-8]$" str)))
+
 (defun all-positions (item list)
   "Returns a new list of all positions an item appears at in a list."
   (let ((l nil))
@@ -21,12 +29,12 @@
   (list 'quote p))
 
 (defun stringem (&rest items)
-  "Adjoins items as one string."
-  (format nil "~{~a~^~}" items))
+  "Adjoins items as one lowercase string."
+  (format nil "~(~{~a~^~}~)" items))
 
 (defun bogu-folder (name)
   "Checks for a specified directory in bogu/compositions and creates one if it doesn't exist."
-  (ensure-directories-exist (stringem 'bogu/compositions/ name #\/)))
+  (ensure-directories-exist (stringem 'compositions/ name #\/)))
 
 (defun bogu-reader (code)
   "Formats bogu code for lisp reader."
@@ -54,10 +62,9 @@
 
 (defun comp-path (filename directory type)
   "Creates a pathname with specified name of specified type in specified directory."
-  (make-pathname
-   :directory `(:relative ,directory)
-   :type type
-   :name filename))
+  (make-pathname :name filename
+                 :type type
+                 :defaults (parse-namestring directory)))
 
 (defun bogu->csd (filename)
   "Prints bogu score data to csound .csd file."
@@ -95,4 +102,4 @@ e
 </CsScore>
 </CsoundSynthesizer>"
 	      (loop for i from 1 to (length *instruments*) collecting i)
-	      (reverse *bpm*) (reverse *score*)))))
+	      (reverse *bpm*) (flatten (reverse *score*))))))
