@@ -1,7 +1,4 @@
-a4 q
-b4 q
-c4 q
-d4 q
-e4 q
-a4 h
-rpt 6
+def motif c3 e3 g3
+seq q eb3 g3 bb3 motif a3 c#3 e3
+seq e motif
+seq et motif

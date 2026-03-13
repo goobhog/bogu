@@ -1,11 +1,5 @@
 (ql:quickload "cl-ppcre")
 
-(defun note-p (sym)
-  "Checks if a symbol follows the bogu note pattern (e.g., c4, f#3, bb2)."
-  (let ((str (string-downcase (symbol-name sym))))
-    ;; Pattern: 1-2 letters (a-g, optionally # or b) followed by a digit (0-8)
-    (cl-ppcre:scan "^[a-g][#b]?[0-8]$" str)))
-
 (defun all-positions (item list)
   "Returns a new list of all positions an item appears at in a list."
   (let ((l nil))
@@ -30,10 +24,10 @@
 
 (defun stringem (&rest items)
   "Adjoins items as one lowercase string."
-  (format nil "~(~{~a~^~}~)" items))
+  (string-downcase (format nil "~{~a~^~}" items)))
 
 (defun bogu-folder (name)
-  "Checks for a specified directory in bogu/compositions and creates one if it doesn't exist."
+  "Checks for a specified directory in compositions/ and creates one if it doesn't exist."
   (ensure-directories-exist (stringem 'compositions/ name #\/)))
 
 (defun bogu-reader (code)
@@ -65,6 +59,27 @@
   (make-pathname :name filename
                  :type type
                  :defaults (parse-namestring directory)))
+
+(defun note-p (sym)
+  "Checks if a symbol follows the bogu note pattern (e.g., c4, f#3, bb2)."
+  (let ((str (string-downcase (symbol-name sym))))
+    (cl-ppcre:scan "^[a-g][#b]?[0-8]$" str)))
+
+(defun expand-vars (args)
+  "Expands variables in the argument list, respecting Bogu's quotes."
+  (loop for arg in args
+        ;; Extract the raw word from inside the bogu-reader (quote ...)
+        for sym = (if (and (listp arg) (eq (car arg) 'quote))
+                      (cadr arg)
+                      arg)
+        for var-lookup = (and (symbolp sym) (assoc sym *vars*))
+        
+        if var-lookup
+          ;; If it's a variable, recursively expand its contents!
+          append (expand-vars (loop for val in (cdr var-lookup) collect (list 'quote val)))
+        else
+          ;; Otherwise, keep the original quoted argument
+          collect arg))
 
 (defun bogu->csd (filename)
   "Prints bogu score data to csound .csd file."

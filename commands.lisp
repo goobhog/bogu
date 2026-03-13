@@ -6,11 +6,11 @@
 (defparameter *current-instrument* 1)
 (defparameter *score* '())
 (defparameter *last-sequence* '())
-(defparameter *polys* '())
-(defparameter *sequences* '())
 (defparameter *bogu-code* '())
 (defparameter *passages* '())
 (defparameter *pas* nil)
+(defparameter *vars* '())
+(defparameter *current-project* nil)
 
 ;;bogu functions----------------------
 
@@ -22,11 +22,27 @@
   (setf *current-instrument* 1)
   (setf *score* '())
   (setf *last-sequence* '())
-  (setf *polys* '())
-  (setf *sequences* '())
   (setf *bogu-code* '())
   (setf *pas* nil)
-  (setf *passages* '()))
+  (setf *passages* '())
+  (setf *vars* '())
+  (setf *current-project* nil))
+
+(defun def (name &rest body)
+  "Binds a bogu command to a variable, overwriting it if it already exists."
+  (let ((existing (assoc name *vars* :test #'equal)))
+    (if existing
+        ;; If it exists, overwrite the old memory with the new notes
+        (setf (cdr existing) body) 
+        ;; If it's new, push it to the memory bank
+        (push (cons name body) *vars*)))
+  (format t "~%[Bound] ~a -> ~a~%~%" name body))
+
+(defun vars ()
+  "Displays the current ledger of all user-defined variables."
+  (if *vars*
+      (format t "~%~{~a ~%~}~%" (reverse *vars*))
+      (format t "~%nothing here yet...~%~%")))
 
 (defun pas ()
   "Sets pas (passage) variable to t if nil, nil if t."
@@ -58,16 +74,6 @@
   (setf (cdr (assoc *current-instrument* *instruments*)) *itime*)
   (setf *itime* (cdr (assoc n *instruments*)))
   (setf *current-instrument* n))
-
-(defun defpoly (name &rest notes)
-  "Pushes a user defined poly to polys list."
-  (push (cons name notes) *polys*))
-
-(defun polys ()
-  "Displays current ledger of poly definitions."
-  (if *polys*
-      (format t "~%~{~a ~%~}~%" (reverse *polys*))
-      (format t "~%nothing here yet...~%~%")))
   
 (defun poly (rval &rest notes)
   "Pushes a poly to the score list."
@@ -95,16 +101,6 @@
         ;; indices:               0    1      2     3    4
         (setf *itime* (+ (nth 2 last-note) (nth 3 last-note))))
       (setf *itime* 0)))
-
-(defun defseq (name &rest notes)
-  "Pushes a user defined sequence to the sequences list."
-  (push (cons name notes) *sequences*))
-
-(defun seqs ()
-  "Displays current ledger of user defined sequences."
-  (if *sequences*
-      (format t "~%~{~a ~%~}~%" (reverse *sequences*))
-      (format t "~%nothing here yet...~%~%")))
 
 (defun seq (rval &rest notes)
   "Pushes sequence of notes to score list, replaces last sequence list with said sequence."
@@ -197,57 +193,93 @@
   (push (list "i" i *itime* (rtm rval) (note->pch nval oval)) *score*)
   (incf *itime* (rtm rval)))
 
-(defun save (filename)
-  "Saves the bogu code data as a .bogu file and the composition data as a csound .csd file to the compositions folder."
-  (with-open-file (out (comp-path filename (bogu-folder filename) "bogu")
-		       :direction :output
-		       :if-exists :supersede)
-    (with-standard-io-syntax
-      (dolist (i (reverse *bogu-code*))
-	(cond ((string= "%" i)
-	       (format out "~{~a~}~%"  (list i))))
-	(cond ((not (or (string= "%" i) ;;this command's single character length messes up checks to string= below
-			(null (coerce i 'list))
-			(string= (stringem "load " #\" filename #\") i);;preventing endless calls to load
-			(string= "pla" i :start2 0 :end2 3)
-			(string= "sav" i :start2 0 :end2 3)))
-	       (format out "~{~a~%~}" (list i)))))))
-  (bogu->csd filename)
-  (format t "saved \"compositions/~a/~a.bogu\"~%" filename filename)
-  (format t "saved \"compositions/~a/~a.csd\"~%" filename filename))
+(defun save (&optional filename)
+  "Saves the project, prompting for a name if none exists."
+  ;; 1. If they typed a name (e.g., 'save mytrack'), set it as the current project
+  (when filename
+    (setf *current-project* (string-downcase (string filename))))
+    
+  ;; 2. If there is still no project name, prompt for one!
+  (unless *current-project*
+    (format t "Enter a name for this new project: ")
+    (finish-output)
+    (let ((name (read-line)))
+      (if (string= name "")
+          (progn (format t "Save cancelled.~%") (return-from save))
+          (setf *current-project* name))))
+          
+  ;; 3. Proceed with saving using *current-project*
+  (let ((fname *current-project*))
+    (with-open-file (out (comp-path fname (bogu-folder fname) "bogu")
+                         :direction :output
+                         :if-exists :supersede)
+      (with-standard-io-syntax
+        (dolist (line (reverse *bogu-code*))
+          (let* ((parsed (ignore-errors (read-from-string (format nil "(~a)" line))))
+                 (cmd (car parsed)))
+            (cond 
+              ((string= "%" line) (format out "~a~%" line))
+              ((or (null parsed)
+                   (member cmd '(play save help vars where seqs polys psgs bogu-load)))
+               nil)
+              (t (format out "~a~%" line)))))))
+    (format t "saved \"compositions/~a/~a.bogu\"~%" fname fname)))
 
-(defun bogu-load (filename)
-  "Reads input from a .bogu file, safely handling errors on a line-by-line basis."
-  (reset-bogu)
-  (with-open-file (in (comp-path filename (bogu-folder filename) "bogu")
-                      :direction :input
-                      :if-does-not-exist nil)
-    (if in
-        (loop for line = (read-line in nil)
-              while line do
-                (unless (string= line "") ; Skip empty lines
-                  (push line *bogu-code*)
-                  ;; Trap reading errors line-by-line
-                  (let ((cmd (handler-case (bogu-reader line)
-                               (error (e)
-                                 (format t "[File Reader Error] Skipping line: ~A~%Details: ~A~%" line e)
-                                 nil))))
-                    ;; Trap evaluation errors line-by-line
-                    (when cmd
-                      (composition-eval cmd)))))
-        (format t "Error: File ~a.bogu not found.~%" filename)))
-  (format t "loaded \"compositions/~a/~a.bogu\"~%" filename filename))
+(defun play (&optional filename)
+  "Compiles the current state into a .csd and plays it."
+  (when filename
+    (setf *current-project* (string-downcase (string filename))))
+    
+  (unless *current-project*
+    (format t "Error: This project has no name yet. Please type 'save' to name it first.~%")
+    (return-from play))
+    
+  (let ((fname *current-project*))
+    (bogu->csd fname)
+    (format t "playing \"compositions/~a/~a.csd\"...~%" fname fname)
+    (sb-ext:run-program "/usr/bin/csound" 
+                        (list (namestring (comp-path fname (bogu-folder fname) "csd")))
+                        :search t   
+                        :output t   
+                        :error t)))
 
-(defun play (filename)
-  "Creates and plays a csound .csd file and streams output to the REPL."
-  (format t "playing \"compositions/~a/~a.csd\"...~%" filename filename)
-  (sb-ext:run-program "/usr/bin/csound" ;; <-- Updated path (verify with 'which csound' if it still fails)
-                      (list (namestring (comp-path filename (bogu-folder filename) "csd")))
-                      :search t   ;; Tells SBCL to search your system PATH just in case
-                      :output t   ;; Streams Csound's terminal output into SLIME
-                      :error t))  ;; Streams any Csound errors into SLIME
+(defun bogu-load (&optional filename)
+  "Loads a project, prompting to save if there is unsaved work."
+  ;; 1. Check if we are mid-project. If *score* has data, prompt to save!
+  (when *score*
+    (format t "Save your current project before loading a new one? (y/n): ")
+    (finish-output)
+    (let ((ans (read-line)))
+      (when (string= (string-downcase ans) "y")
+        (save)))) ;; Calls our newly upgraded save function
+
+  ;; 2. Determine what file to load
+  (let ((target (if filename 
+                    (string-downcase (string filename))
+                    (progn
+                      (format t "Enter project name to load: ")
+                      (finish-output)
+                      (read-line)))))
+                      
+    ;; 3. If a valid name was given, wipe the slate and load it
+    (when (not (string= target ""))
+      (reset-bogu)
+      (setf *current-project* target) ;; Lock in the loaded project name
+      (with-open-file (in (comp-path target (bogu-folder target) "bogu")
+                          :direction :input
+                          :if-does-not-exist nil)
+        (if in
+            (loop for line = (read-line in nil)
+                  while line do
+                    (unless (string= line "")
+                      (push line *bogu-code*)
+                      (let ((cmd (handler-case (bogu-reader line)
+                                   (error (e) nil))))
+                        (when cmd (composition-eval cmd)))))
+            (format t "Error: File ~a.bogu not found.~%" target)))
+      (format t "loaded \"compositions/~a/~a.bogu\"~%" target target))))
   
-;; note macro ----------------------------
+;; macros ----------------------------
 
 (defmacro generate-notes (pitches octaves)
   "Automatically generates bogu note functions (e.g., c4, eb3) based on pitch names and octaves."

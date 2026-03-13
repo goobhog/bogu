@@ -203,9 +203,3 @@ d1 q.
 i 2
 rst e
 poly q d2 a3 d3 f#3 d4 f#4
-bogu-load "chopop28no5"
-psgs
-polys
-seqs
-where 9
-where 2
