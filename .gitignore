@@ -4,3 +4,4 @@ tests
 *.pub
 *.ssh
 *.DS_Store
+*.fasl
