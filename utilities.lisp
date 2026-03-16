@@ -117,4 +117,11 @@ e
 </CsScore>
 </CsoundSynthesizer>"
 	      (loop for i from 1 to (length *instruments*) collecting i)
-	      (reverse *bpm*) (flatten (reverse *score*))))))
+	      (reverse *bpm*) 
+              ;; The Exporter Bridge: translates Plist to Csound format
+              (loop for event in (reverse *score*)
+                    append (list "i" 
+				 (getf event :instr) 
+				 (getf event :time) 
+				 (getf event :dur) 
+				 (getf event :pch)))))))

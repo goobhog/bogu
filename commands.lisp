@@ -12,7 +12,34 @@
 (defparameter *vars* '())
 (defparameter *current-project* nil)
 
-;;bogu functions----------------------
+(defparameter *csound-process* nil)
+
+;; bogu functions -----------------------------------------------
+
+(defun start-audio-engine ()
+  "Generates the live engine CSD in compositions/, boots Csound silently, and opens the pipeline."
+  ;; 1. Kill any existing zombie processes
+  (when *csound-process*
+    (ignore-errors (sb-ext:process-kill *csound-process* 15)))
+  
+  ;; 2. Explicitly target compositions/live-bogu.csd
+  (let ((csd-path (namestring (comp-path "live-bogu" "compositions/" "csd"))))
+    
+    ;; 3. Overwrite your old OSC file with the clean 'stdin' version
+    (with-open-file (out csd-path :direction :output :if-exists :supersede)
+      (format out "<CsoundSynthesizer>~%<CsOptions>~%-odac -m0d -L stdin~%</CsOptions>~%<CsInstruments>~%sr = 44100~%ksmps = 32~%nchnls = 2~%0dbfs = 4~%")
+      (format out "giwave ftgen 2, 0, 4096, 10, 0.216, 0.130, 0.043, 0.026, 0.016, 0.011, 0.008, 0.007, 0.004, 0.001, 0.002, 0.003, 0.001, 0.001~%")
+      (format out "instr 1~%ares linen .4, .03, p3, .02~%asig poscil ares, cpspch(p4), 2~%outs asig, asig~%endin~%")
+      (format out "</CsInstruments>~%<CsScore>~%f 0 36000~%</CsScore>~%</CsoundSynthesizer>~%"))
+
+    ;; 4. Boot Csound completely silently
+    (setf *csound-process* (sb-ext:run-program "/usr/bin/csound" 
+                              (list csd-path)
+                              :search t
+                              :input :stream
+                              :output nil   ;; <-- Hides Csound's messy text!
+                              :wait nil)))
+  (format t "~%[AUDIO ENGINE] Csound is running silently in the background...~%"))
 
 (defun reset-bogu ()
   "Resets all global variables to their default values."
@@ -94,13 +121,34 @@
   "Deletes n notes beginning with the last note entered."
   (dotimes (i n)
     (pop *score*))
-  ;; Reset *itime* to the end of whatever note is now at the top of the list
+  ;; Reset *itime* using Plist keyword lookups
   (if *score*
       (let ((last-note (car *score*)))
-        ;; last-note looks like: ("i" instr itime dur pch)
-        ;; indices:               0    1      2     3    4
-        (setf *itime* (+ (nth 2 last-note) (nth 3 last-note))))
+        (setf *itime* (+ (getf last-note :time) (getf last-note :dur))))
       (setf *itime* 0)))
+
+(defun rpt (n &optional (s 0))
+  "Repeats the last n notes, starting from the sth last note, preserving chords."
+  (let* ((chunk (subseq *score* s (+ s n)))
+         (oldest-note (car (last chunk))) 
+         (start-time (getf oldest-note :time))
+         (time-offset (- *itime* start-time)))
+    
+    (dolist (event (reverse chunk))
+      ;; Extract the pure data
+      (let ((instr (getf event :instr))
+            (old-itime (getf event :time))
+            (dur (getf event :dur))
+            (pitch (getf event :pitch))
+            (octave (getf event :octave))
+            (pch (getf event :pch)))
+        ;; Push the copied note with its new offset time
+        (push (list :type :note :instr instr :time (+ old-itime time-offset) 
+                    :dur dur :pitch pitch :octave octave :pch pch) 
+              *score*)))
+    
+    (let ((last-new-note (car *score*)))
+      (setf *itime* (+ (getf last-new-note :time) (getf last-new-note :dur))))))
 
 (defun seq (rval &rest notes)
   "Pushes sequence of notes to score list, replaces last sequence list with said sequence."
@@ -148,28 +196,6 @@
   (dolist (i (cdr (assoc n *passages*)))
     (eval (bogu-reader i))))
 
-(defun rpt (n &optional (s 0))
-  "Repeats the last n notes, starting from the sth last note, preserving chords."
-  (let* ((chunk (subseq *score* s (+ s n)))
-         ;; The oldest note in the chunk we are copying
-         (oldest-note (car (last chunk))) 
-         (start-time (nth 2 oldest-note))
-         ;; Calculate the exact time difference to shift the copied block to *itime*
-         (time-offset (- *itime* start-time)))
-    
-    ;; Iterate through the chunk in chronological order
-    (dolist (event (reverse chunk))
-      (let ((instr (nth 1 event))
-            (old-itime (nth 2 event))
-            (dur (nth 3 event))
-            (pch (nth 4 event)))
-        ;; Push the copied note with its new offset time
-        (push (list "i" instr (+ old-itime time-offset) dur pch) *score*)))
-    
-    ;; Update the global *itime* to the end of the newly pasted block
-    (let ((last-new-note (car *score*)))
-      (setf *itime* (+ (nth 2 last-new-note) (nth 3 last-new-note))))))
-
 (defun rst (rval)
   "Increases the itime of next note."
   (incf *itime* (rtm rval)))
@@ -188,9 +214,15 @@
 	  (mod *itime* div)))
 
 (defun note (i rval nval oval)
-  "Pushes note data to score list as a structured sub-list."
-  ;; We group the 5 Csound p-fields into their own list before pushing.
-  (push (list "i" i *itime* (rtm rval) (note->pch nval oval)) *score*)
+  "Pushes note data to score list as a pure Lisp Property List (Plist)."
+  (push (list :type :note
+              :instr i
+              :time *itime*
+              :dur (rtm rval)
+              :pitch nval   ;; Raw note name (e.g., 'C)
+              :octave oval  ;; Raw octave (e.g., 4)
+              :pch (note->pch nval oval)) ;; Csound's specific format
+        *score*)
   (incf *itime* (rtm rval)))
 
 (defun save (&optional filename)
@@ -243,15 +275,58 @@
                         :output t   
                         :error t)))
 
+(defun play-live ()
+  "A real-time sequence execution engine routing audio directly to Csound's stdin."
+  (if (null *score*)
+      (return-from play-live (format t "Score is empty!~%")))
+  (if (null *csound-process*)
+      (return-from play-live (format t "Error: Run (start-audio-engine) first!~%")))
+
+  (let* ((sorted-score (sort (copy-list *score*) #'< :key (lambda (x) (getf x :time))))
+         (start-time (get-internal-real-time))
+         (time-units internal-time-units-per-second)
+         (current-bpm (car *bpm*))
+         ;; Grab the open pipeline to Csound
+         (csound-in (sb-ext:process-input *csound-process*)))
+
+    (format t "~%[LIVE ENGINE STARTED] Streaming to Csound...~%")
+
+    (loop while sorted-score do
+      (let* ((current-time (/ (- (get-internal-real-time) start-time) time-units))
+             (next-event (car sorted-score))
+             (event-beats (getf next-event :time))
+             (event-seconds (* event-beats (/ 60.0 current-bpm))))
+
+        (if (>= current-time event-seconds)
+            (progn
+              ;; 1. Write the score event directly into Csound's brain!
+              (format csound-in "i ~a 0 ~a ~a~%" 
+                      (getf next-event :instr)
+                      (getf next-event :dur)
+                      (getf next-event :pch))
+              
+              ;; 2. CRITICAL: flush the stream so Csound hears it instantly
+              (force-output csound-in) 
+              
+              ;; 3. Still print to your terminal so you can watch
+              (format t "[~,3fs] STRM -> INSTR ~a PCH ~a~%" 
+                      current-time (getf next-event :instr) (getf next-event :pch))
+              
+              (pop sorted-score))
+            
+            (sleep 0.001))))
+
+    (format t "[LIVE ENGINE STOPPED] Sequence complete.~%")))
+
 (defun bogu-load (&optional filename)
-  "Loads a project, prompting to save if there is unsaved work."
-  ;; 1. Check if we are mid-project. If *score* has data, prompt to save!
+  "Loads a project, waiting for brackets to close before evaluating blocks."
+  ;; 1. Check if we are mid-project
   (when *score*
     (format t "Save your current project before loading a new one? (y/n): ")
     (finish-output)
     (let ((ans (read-line)))
       (when (string= (string-downcase ans) "y")
-        (save)))) ;; Calls our newly upgraded save function
+        (save))))
 
   ;; 2. Determine what file to load
   (let ((target (if filename 
@@ -261,24 +336,33 @@
                       (finish-output)
                       (read-line)))))
                       
-    ;; 3. If a valid name was given, wipe the slate and load it
+    ;; 3. Load with Bracket Awareness!
     (when (not (string= target ""))
       (reset-bogu)
-      (setf *current-project* target) ;; Lock in the loaded project name
+      (setf *current-project* target)
       (with-open-file (in (comp-path target (bogu-folder target) "bogu")
                           :direction :input
                           :if-does-not-exist nil)
         (if in
-            (loop for line = (read-line in nil)
-                  while line do
-                    (unless (string= line "")
-                      (push line *bogu-code*)
-                      (let ((cmd (handler-case (bogu-reader line)
-                                   (error (e) nil))))
-                        (when cmd (composition-eval cmd)))))
+            (let ((input-string ""))
+              (loop for line = (read-line in nil)
+                    while line do
+                      (unless (string= line "")
+                        (push line *bogu-code*)
+                        ;; Glue the new line to our ongoing block
+                        (setf input-string (if (string= input-string "") 
+                                               line 
+                                               (concatenate 'string input-string " " line)))
+                        ;; ONLY evaluate if brackets are completely balanced!
+                        (when (= (count #\[ input-string) (count #\] input-string))
+                          (let ((cmd (handler-case (bogu-reader input-string)
+                                       (error (e) nil))))
+                            (when cmd (composition-eval cmd)))
+                          ;; Reset string for the next command
+                          (setf input-string "")))))
             (format t "Error: File ~a.bogu not found.~%" target)))
       (format t "loaded \"compositions/~a/~a.bogu\"~%" target target))))
-  
+
 ;; macros ----------------------------
 
 (defmacro generate-notes (pitches octaves)
