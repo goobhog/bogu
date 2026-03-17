@@ -1,8 +1,8 @@
 bpm 85
-defseq c0 c2 g2 e3
-defseq f0 f2 a3 e3
-defseq ab0 ab2 c3 f3
-defseq g0 g2 d3 f3
+def c0 c2 g2 e3
+def f0 f2 a3 e3
+def ab0 ab2 c3 f3
+def g0 g2 d3 f3
 pas
 sarp e q. c0
 sarp e q. f0

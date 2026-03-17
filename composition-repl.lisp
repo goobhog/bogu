@@ -1,4 +1,4 @@
-(defparameter *allowed-commands* '(def vars seq play rpt rst save help i reset poly sarp del % bpm where pas psgs psg bogu-load load play-live start-audio-engine))
+(defparameter *allowed-commands* '(def vars seq play rpt rst save help i reset poly sarp del % bpm where pas psgs psg bogu-load load play-live start-audio-engine cell fluid))
 
 ;; Teach Lisp to start a list when it sees '['
 (set-macro-character #\[
@@ -114,6 +114,30 @@
                  (when false-branch
                    (eval-block false-branch)))
              t))
+
+	  ;; 1.8. Cellular Time (CELL)
+          ((eq cmd 'cell)
+           (let* ((expanded-args (expand-vars args))
+                  ;; Get the duration of the cell
+                  (raw-dur (car expanded-args))
+                  (dur-val (if (and (listp raw-dur) (eq (car raw-dur) 'quote)) (cadr raw-dur) raw-dur))
+                  (cell-duration (rtm dur-val))
+                  
+                  ;; Get the block of commands
+                  (raw-block (cadr expanded-args))
+                  (block (if (and (listp raw-block) (eq (car raw-block) 'quote)) (cadr raw-block) raw-block))
+                  
+                  ;; Define the Time Bucket boundaries
+                  (cell-start *itime*)
+                  (cell-end (+ cell-start cell-duration)))
+             
+             ;; 1. Evaluate everything inside the cell (the micro-rhythm)
+             (eval-block block)
+             
+             ;; 2. MACRO-RHYTHM ENFORCEMENT: 
+             ;; Snap the global clock to the cell's end, no matter what happened inside!
+             (setf *itime* cell-end)
+             t))
            
           ;; 2. Standard Commands
           ((or (member cmd *allowed-commands*)
@@ -134,14 +158,24 @@
       nil)))
 
 (defun read-bogu-input ()
-  "Reads input from the REPL, waiting if there are open brackets."
+  "Reads input from the REPL, applies ASI, and ignores comments."
   (let ((input (read-line)))
+    
     ;; As long as there are more [ than ], keep asking for more lines!
     (loop while (> (count #\[ input) (count #\] input)) do
           (format t "  > ") ;; A subtle prompt to show it's a continuation
           (finish-output)
-          ;; Glue the new line to the end of the previous lines
-          (setf input (concatenate 'string input " " (read-line))))
+          
+          (let* ((next-line (read-line))
+                 (trimmed-line (string-trim " " next-line)))
+            
+            ;; Ignore empty lines and REPL comments!
+            (unless (or (string= trimmed-line "")
+                        (and (> (length trimmed-line) 0) 
+                             (char= (char trimmed-line 0) #\;)))
+              
+              ;; ASI: Glue the new line with " & " instead of a blank space
+              (setf input (concatenate 'string input " & " next-line)))))
     input))
 
 (defun composition-repl ()

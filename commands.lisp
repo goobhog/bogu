@@ -7,8 +7,6 @@
 (defparameter *score* '())
 (defparameter *last-sequence* '())
 (defparameter *bogu-code* '())
-(defparameter *passages* '())
-(defparameter *pas* nil)
 (defparameter *vars* '())
 (defparameter *current-project* nil)
 
@@ -17,29 +15,31 @@
 ;; bogu functions -----------------------------------------------
 
 (defun start-audio-engine ()
-  "Generates the live engine CSD in compositions/, boots Csound silently, and opens the pipeline."
+  "Generates the live engine CSD with 16 tracks, boots Csound silently, and opens the pipeline."
   ;; 1. Kill any existing zombie processes
   (when *csound-process*
     (ignore-errors (sb-ext:process-kill *csound-process* 15)))
   
-  ;; 2. Explicitly target compositions/live-bogu.csd
   (let ((csd-path (namestring (comp-path "live-bogu" "compositions/" "csd"))))
     
-    ;; 3. Overwrite your old OSC file with the clean 'stdin' version
     (with-open-file (out csd-path :direction :output :if-exists :supersede)
       (format out "<CsoundSynthesizer>~%<CsOptions>~%-odac -m0d -L stdin~%</CsOptions>~%<CsInstruments>~%sr = 44100~%ksmps = 32~%nchnls = 2~%0dbfs = 4~%")
       (format out "giwave ftgen 2, 0, 4096, 10, 0.216, 0.130, 0.043, 0.026, 0.016, 0.011, 0.008, 0.007, 0.004, 0.001, 0.002, 0.003, 0.001, 0.001~%")
-      (format out "instr 1~%ares linen .4, .03, p3, .02~%asig poscil ares, cpspch(p4), 2~%outs asig, asig~%endin~%")
+      
+      ;; 2. THE FIX: Loop 16 times to create 16 identical synthesizers!
+      (dotimes (i 16)
+        (format out "instr ~a~%ares linen .4, .03, p3, .02~%asig poscil ares, cpspch(p4), 2~%outs asig, asig~%endin~%" (1+ i)))
+        
       (format out "</CsInstruments>~%<CsScore>~%f 0 36000~%</CsScore>~%</CsoundSynthesizer>~%"))
 
-    ;; 4. Boot Csound completely silently
+    ;; 3. Boot Csound completely silently
     (setf *csound-process* (sb-ext:run-program "/usr/bin/csound" 
                               (list csd-path)
                               :search t
                               :input :stream
-                              :output nil   ;; <-- Hides Csound's messy text!
+                              :output nil
                               :wait nil)))
-  (format t "~%[AUDIO ENGINE] Csound is running silently in the background...~%"))
+  (format t "~%[AUDIO ENGINE] Csound is running silently with 16 active tracks...~%"))
 
 (defun reset-bogu ()
   "Resets all global variables to their default values."
@@ -50,8 +50,6 @@
   (setf *score* '())
   (setf *last-sequence* '())
   (setf *bogu-code* '())
-  (setf *pas* nil)
-  (setf *passages* '())
   (setf *vars* '())
   (setf *current-project* nil))
 
@@ -71,29 +69,6 @@
       (format t "~%~{~a ~%~}~%" (reverse *vars*))
       (format t "~%nothing here yet...~%~%")))
 
-(defun pas ()
-  "Sets pas (passage) variable to t if nil, nil if t."
-  (if (null *pas*)
-      (progn
-	(setf *pas* t)
-	(let ((n 1))
-	  (if (not (assoc n *passages*))
-	      (push (cons n nil) *passages*)
-	      (progn
-		(if (cdr (assoc n *passages*))
-		    (push (cons (1+ (first (first *passages*))) nil) *passages*))))))
-      (progn
-	(setf (cdr (assoc (length *passages*) *passages*))
-	      (reverse (cdr (assoc (length *passages*) *passages*))))
-	(setf *pas* nil)))
-  (format t "passage ~:[end~;start~]~%" *pas*))
-
-(defun psgs ()
-  "Displays all written passages."
-  (if *passages*
-      (format t "~%~{~{~a~%~}~}~%" (reverse *passages*))
-      (format t "~%nothing here yet...~%~%")))
-
 (defun i (n)
   "Changes the instrument receiving input."
   (if (not (assoc n *instruments*))
@@ -101,21 +76,6 @@
   (setf (cdr (assoc *current-instrument* *instruments*)) *itime*)
   (setf *itime* (cdr (assoc n *instruments*)))
   (setf *current-instrument* n))
-  
-(defun poly (rval &rest notes)
-  "Pushes a poly to the score list."
-  (let ((r (rtm rval)))
-    (if (assoc (car notes) *polys*)
-	(eval (append `(poly ,r)
-		      (mapcar #'fn-it
-			      (cdr (assoc (car notes) *polys*)))))
-	(progn
-	  (dolist (i notes)
-	    (incf *current-instrument* 0.01)
-	    (funcall i r)
-	  (decf *itime* r))
-	(setf *current-instrument* (floor *current-instrument*))
-	(incf *itime* r))))) 
 
 (defun del (n)
   "Deletes n notes beginning with the last note entered."
@@ -150,51 +110,54 @@
     (let ((last-new-note (car *score*)))
       (setf *itime* (+ (getf last-new-note :time) (getf last-new-note :dur))))))
 
-(defun seq (rval &rest notes)
-  "Pushes sequence of notes to score list, replaces last sequence list with said sequence."
-  (setf *last-sequence* '())
+(defun poly (rval &rest notes)
+  "Pushes a chord to the score list, snapping the playhead to the end of the duration."
   (let ((r (rtm rval)))
     (dolist (i notes)
-      (cond ((assoc i *polys*)
-	     (eval (append `(poly ,r)
-			   (mapcar #'fn-it
-				   (cdr (assoc i *polys*))))))
-	    ((assoc i *sequences*)
-	     (eval (append `(seq ,r)
-			   (mapcar #'fn-it
-				   (cdr (assoc i *sequences*))))))
-	    (t (funcall i r))))
-    (setf *last-sequence* (flatten `(seq ,r ,notes)))))
+      (incf *current-instrument* 0.01)
+      (funcall i r)   ;; Fire the note
+      (decf *itime* r)) ;; Rewind the clock for the next note in the chord
+    (setf *current-instrument* (floor *current-instrument*))
+    (incf *itime* r)))  ;; Move the global clock forward once at the end
+
+(defun seq (rval &rest notes)
+  "Pushes a sequence of notes to the score list, advancing the playhead for each."
+  (let ((r (rtm rval)))
+    (dolist (i notes)
+      (funcall i r))))
 
 (defun sarp (rval sval &rest notes)
-  "Pushes a sustained arpeggio to the score list. Parameters specify the arpeggio's rhythm and length of sustain."
+  "Pushes a sustained arpeggio. Parameters specify attack rhythm (rval) and total sustain (sval)."
   (let ((r (rtm rval))
-	(s (rtm sval)))
-    (if (assoc (car notes) *sequences*)
-	(eval (append `(sarp ,r ,s)
-		      (mapcar #'fn-it
-			      (cdr (assoc (car notes) *sequences*)))))
-	(progn
-	  (dotimes (i (length notes))
-	    (incf *current-instrument* 0.01)
-	    (funcall (elt notes i) (- s (* r i)))
-	    (decf *itime* (- s (* r (1+ i)))))
-	  (setf *current-instrument* (floor *current-instrument*))
-	  (incf *itime* (- s (* r (length notes))))))))
+        (s (rtm sval)))
+    (dotimes (i (length notes))
+      (incf *current-instrument* 0.01)
+      ;; Each note gets slightly shorter duration to all end at the same time
+      (funcall (elt notes i) (- s (* r i)))
+      ;; Rewind the clock back to the start of the next staggered attack
+      (decf *itime* (- s (* r (1+ i)))))
+    (setf *current-instrument* (floor *current-instrument*))
+    ;; Move the global clock to the end of the total sustain
+    (incf *itime* (- s (* r (length notes))))))
 
-(defun % ()
-  "Evaluates last sequence list."
-  (if (not (assoc (third *last-sequence*) *sequences*))
-      (eval (cons (car *last-sequence*)
-		  (mapcar #'quote-it (cdr *last-sequence*))))
-      (eval (cons (car *last-sequence*)
-		  (cons (quote-it (cadr *last-sequence*))
-			(cddr *last-sequence*))))))
-
-(defun psg (n)
-  "Repeat a specified passage."
-  (dolist (i (cdr (assoc n *passages*)))
-    (eval (bogu-reader i))))
+(defun fluid (rval &rest notes)
+  "Scatters notes randomly (unquantized) within a time boundary. The Bertrand Russell Cloud."
+  (let* ((boundary (rtm rval))
+         (start-time *itime*)
+         (end-time (+ start-time boundary)))
+    
+    (dolist (i notes)
+      ;; 1. Pick a completely random micro-timestamp inside the cell
+      (let ((random-offset (random (float boundary))))
+        (setf *itime* (+ start-time random-offset))
+        
+        ;; 2. Fire the note! We give it a random short duration (a "grain") 
+        ;; so the cloud shimmers instead of bleeding into a muddy drone.
+        (let ((grain-dur (+ 0.05 (random 0.2))))
+          (funcall i grain-dur))))
+          
+    ;; 3. Order out of Chaos: Snap the master clock perfectly to the end of the boundary
+    (setf *itime* end-time)))
 
 (defun rst (rval)
   "Increases the itime of next note."
@@ -347,19 +310,23 @@
             (let ((input-string ""))
               (loop for line = (read-line in nil)
                     while line do
-                      (unless (string= line "")
-                        (push line *bogu-code*)
-                        ;; Glue the new line to our ongoing block
-                        (setf input-string (if (string= input-string "") 
-                                               line 
-                                               (concatenate 'string input-string " " line)))
-                        ;; ONLY evaluate if brackets are completely balanced!
-                        (when (= (count #\[ input-string) (count #\] input-string))
-                          (let ((cmd (handler-case (bogu-reader input-string)
-                                       (error (e) nil))))
-                            (when cmd (composition-eval cmd)))
-                          ;; Reset string for the next command
-                          (setf input-string "")))))
+                      (let ((trimmed-line (string-trim " " line)))
+                        ;; Ignore empty lines AND lines that start with a semicolon
+                        (unless (or (string= trimmed-line "")
+                                    (char= (char trimmed-line 0) #\;))
+                          (push line *bogu-code*)
+                          ;; Glue the new line to our ongoing block
+                          (setf input-string (if (string= input-string "") 
+                                                 line 
+                                                 (concatenate 'string input-string " & " line)))
+                          ;; ONLY evaluate if brackets are completely balanced!
+                          (when (= (count #\[ input-string) (count #\] input-string))
+                            (let ((cmd (handler-case (bogu-reader input-string)
+                                         (error (e) nil))))
+                              (when cmd (composition-eval cmd)))
+                            ;; Reset string for the next command
+                            (setf input-string ""))))))
+            ;; The ELSE branch if the file is not found
             (format t "Error: File ~a.bogu not found.~%" target)))
       (format t "loaded \"compositions/~a/~a.bogu\"~%" target target))))
 

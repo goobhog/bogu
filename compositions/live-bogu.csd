@@ -13,6 +13,81 @@ ares linen .4, .03, p3, .02
 asig poscil ares, cpspch(p4), 2
 outs asig, asig
 endin
+instr 2
+ares linen .4, .03, p3, .02
+asig poscil ares, cpspch(p4), 2
+outs asig, asig
+endin
+instr 3
+ares linen .4, .03, p3, .02
+asig poscil ares, cpspch(p4), 2
+outs asig, asig
+endin
+instr 4
+ares linen .4, .03, p3, .02
+asig poscil ares, cpspch(p4), 2
+outs asig, asig
+endin
+instr 5
+ares linen .4, .03, p3, .02
+asig poscil ares, cpspch(p4), 2
+outs asig, asig
+endin
+instr 6
+ares linen .4, .03, p3, .02
+asig poscil ares, cpspch(p4), 2
+outs asig, asig
+endin
+instr 7
+ares linen .4, .03, p3, .02
+asig poscil ares, cpspch(p4), 2
+outs asig, asig
+endin
+instr 8
+ares linen .4, .03, p3, .02
+asig poscil ares, cpspch(p4), 2
+outs asig, asig
+endin
+instr 9
+ares linen .4, .03, p3, .02
+asig poscil ares, cpspch(p4), 2
+outs asig, asig
+endin
+instr 10
+ares linen .4, .03, p3, .02
+asig poscil ares, cpspch(p4), 2
+outs asig, asig
+endin
+instr 11
+ares linen .4, .03, p3, .02
+asig poscil ares, cpspch(p4), 2
+outs asig, asig
+endin
+instr 12
+ares linen .4, .03, p3, .02
+asig poscil ares, cpspch(p4), 2
+outs asig, asig
+endin
+instr 13
+ares linen .4, .03, p3, .02
+asig poscil ares, cpspch(p4), 2
+outs asig, asig
+endin
+instr 14
+ares linen .4, .03, p3, .02
+asig poscil ares, cpspch(p4), 2
+outs asig, asig
+endin
+instr 15
+ares linen .4, .03, p3, .02
+asig poscil ares, cpspch(p4), 2
+outs asig, asig
+endin
+instr 16
+ares linen .4, .03, p3, .02
+asig poscil ares, cpspch(p4), 2
+outs asig, asig
+endin
 </CsInstruments>
 <CsScore>
 f 0 36000
