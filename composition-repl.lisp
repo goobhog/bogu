@@ -1,203 +1,189 @@
-(defparameter *allowed-commands* '(def vars seq play rpt rst save help i reset poly sarp del % bpm where pas psgs psg bogu-load load play-live start-audio-engine cell fluid))
+(defparameter *allowed-commands* '(def vars seq play rpt rst save help i reset poly sarp del bpm where bogu-load play-live start-audio-engine cell fluid transpose vol synth stop))
 
-;; Teach Lisp to start a list when it sees '['
-(set-macro-character #\[
-  (lambda (stream char)
-    (declare (ignore char))
-    (read-delimited-list #\] stream t)))
+(defun execute-ast (ast)
+  "Walks the Abstract Syntax Tree and executes each command node in sequence."
+  (dolist (node ast)
+    (execute-node node)))
 
-;; Teach Lisp to panic if it sees a closing bracket without an opening one
-(set-macro-character #\]
-  (lambda (stream char)
-    (declare (ignore stream char))
-    (error "Unmatched close bracket ]")))
+(defun execute-node (node)
+  "Phase 3: The Engine. Evaluates a single cleanly-parsed AST node."
+  (when (null node) (return-from execute-node t))
 
-(defun error-message (cmd)
-  "Prints error message followed by the faulty code."
-  (format t "~%[Syntax Warning] Unknown symbol or unauthorized command: ~A~%" cmd))
+  (let* ((cmd (car node))
+         (args (cdr node))
+         ;; O(1) Memory Lookup for custom variables
+         (var-body (and (symbolp cmd) (gethash cmd *vars*))))
+    (cond
+      ;; 0. Block Unwrapping (If user typed a naked block like [ poly q c4 ])
+      ((listp cmd)
+       (execute-ast node)
+       t)
 
-(defun split-commands (lst delimiter)
-  "Splits a flat list into multiple sub-lists based on a delimiter."
-  (let ((sub-lists nil)
-        (current nil))
-    (dolist (item lst)
-      (if (eq item delimiter)
-          (when current
-            (push (reverse current) sub-lists)
-            (setf current nil))
-          (push item current)))
-    (when current
-      (push (reverse current) sub-lists))
-    (reverse sub-lists)))
+      ;; 1. Variable Execution (If you type 'maj', run its saved AST body)
+      (var-body
+       (if (listp (car var-body))
+           (execute-ast var-body)             ;; It's a proper AST tree (from brackets)
+           (execute-node var-body))           ;; It's a single flat command
+       t)
 
-(defun eval-block (block)
-  "Slices a block by '&' and evaluates each command sequentially."
-  (if (listp block)
-      ;; If it's a list, slice it up and evaluate each piece
-      (dolist (cmd (split-commands block '&))
-        (composition-eval cmd))
-      ;; If it's not a list, just evaluate it normally
-      (composition-eval block)))
+      ;; 2. Variable Definition (The 'def' command)
+      ((eq cmd 'DEF)
+       (let* ((var-name (car args))
+              (var-contents (cdr args))
+              ;; Normalize storage so brackets don't cause double-nesting
+              (stored-ast (if (and (= (length var-contents) 1) (listp (car var-contents)))
+                              (car var-contents)
+                              var-contents)))
+         (setf (gethash var-name *vars*) stored-ast)
+         (format t "~%[Bound] ~A -> ~A~%" var-name stored-ast)
+         t))
 
-(defun composition-eval (sexp)
-  "Tests commands, expanding variables inline before evaluation. Completely bulletproof."
-  (handler-case
-      (let* ((cmd (car sexp))
-             (args (cdr sexp))
-             ;; Safe lookup: only check for variables if 'cmd' is an actual word, not a list
-             (var-lookup (and (symbolp cmd) (assoc cmd *vars*))))
-        (cond
-          ;; 0.1 Block Unwrapping: If the command is a nested block, send it to the slicer!
-          ((listp cmd)
-           (eval-block cmd) t)
+      ;; 3. Cellular Time
+      ((eq cmd 'CELL)
+       (let* ((expanded-args (expand-vars args))
+              (dur-val (car expanded-args))
+              (cell-duration (rtm dur-val))
+              (block (cadr expanded-args))
+              (cell-start (current-time))
+              (cell-end (+ cell-start cell-duration)))
+         (execute-ast block)
+         ;; Order out of chaos: snap the current track's playhead to the end of the cell
+         (setf (gethash *current-instrument* *playheads*) cell-end)
+         t))
 
-          ;; 0. Variable Expansion
-          (var-lookup
-           (let* ((expanded-list (cdr var-lookup))
-                  (new-sexp (cons (car expanded-list)
-                                  (loop for val in (cdr expanded-list) collect (list 'quote val)))))
-             (composition-eval new-sexp)))
+      ;; 4. Logic & Iteration
+      ((eq cmd 'LOOP)
+       (let* ((expanded-args (expand-vars args))
+              (n (car expanded-args))
+              (block (cadr expanded-args)))
+         (dotimes (i n) (execute-ast block))
+         t))
 
-          ;; 1. Variable Definition
-          ((eq cmd 'def)
-           (eval sexp) t)
-           
-          ;; 1.5. Iteration (LOOP)
-          ((eq cmd 'loop)
-           (let* ((expanded-args (expand-vars args))
-                  ;; Get the number
-                  (raw-n (car expanded-args))
-                  (n-val (if (and (listp raw-n) (eq (car raw-n) 'quote)) (cadr raw-n) raw-n))
-                  (n (if (numberp n-val) n-val (parse-integer (string n-val))))
-                  ;; Get the bracketed block
-                  (raw-block (cadr expanded-args))
-                  (block (if (and (listp raw-block) (eq (car raw-block) 'quote)) (cadr raw-block) raw-block)))
-             (dotimes (i n)
-               (eval-block block))
-             t))
+      ((eq cmd 'CHANCE)
+       (let* ((expanded-args (expand-vars args))
+              (p (car expanded-args))
+              (true-branch (cadr expanded-args))
+              (false-branch (caddr expanded-args)))
+         (if (< (random 100) p)
+             (execute-ast true-branch)
+             (when false-branch (execute-ast false-branch)))
+         t))
 
-          ;; 1.6. Logic (IF)
-          ((eq cmd 'if)
-           (let* ((expanded-args (expand-vars args))
-                  ;; Peel quote off condition
-                  (raw-cond (car expanded-args))
-                  (condition (if (and (listp raw-cond) (eq (car raw-cond) 'quote)) (cadr raw-cond) raw-cond))
-                  ;; Peel quote off true block
-                  (raw-true (cadr expanded-args))
-                  (true-branch (if (and (listp raw-true) (eq (car raw-true) 'quote)) (cadr raw-true) raw-true))
-                  ;; Peel quote off false block (if it exists)
-                  (raw-false (caddr expanded-args))
-                  (false-branch (if (and (listp raw-false) (eq (car raw-false) 'quote)) (cadr raw-false) raw-false)))
-             
-             (if (eval condition)
-                 (eval-block true-branch)
-                 (when false-branch
-                   (eval-block false-branch)))
-             t))
+      ;; 4.1 Instrument Switcher (With Playhead Feedback)
+      ((eq cmd 'I)
+       (let* ((expanded-args (expand-vars args))
+              (id (car expanded-args)))
+         (setf *current-instrument* id)
+         (format t "~%[TRACK] Switched to Instrument ~A (Current Time: ~,3fs)~%" 
+                 id (current-time)))
+       t)
 
-          ;; 1.7. Generative Probability (CHANCE)
-          ((eq cmd 'chance)
-           (let* ((expanded-args (expand-vars args))
-                  ;; Peel quote off probability number
-                  (raw-p (car expanded-args))
-                  (p-val (if (and (listp raw-p) (eq (car raw-p) 'quote)) (cadr raw-p) raw-p))
-                  (p (if (numberp p-val) p-val (parse-integer (string p-val))))
-                  ;; Peel quote off true block
-                  (raw-true (cadr expanded-args))
-                  (true-branch (if (and (listp raw-true) (eq (car raw-true) 'quote)) (cadr raw-true) raw-true))
-                  ;; Peel quote off false block (if it exists)
-                  (raw-false (caddr expanded-args))
-                  (false-branch (if (and (listp raw-false) (eq (car raw-false) 'quote)) (cadr raw-false) raw-false)))
-             
-             (if (< (random 100) p)
-                 (eval-block true-branch)
-                 (when false-branch
-                   (eval-block false-branch)))
-             t))
+      ;; 4.2 Synthesizer Macro-Assembler
+      ((eq cmd 'SYNTH)
+       (let* ((expanded-args (expand-vars args))
+              (id (car expanded-args))
+              (template (cadr expanded-args)))
+         (let ((code (gethash template *synth-templates*)))
+           (if code
+               (progn
+                 (setf (gethash id *synth-rack*) code)
+                 (format t "~%[BIOS] Flashing Instrument ~A with ~A...~%" id template)
+                 (start-audio-engine)) ;; Trigger the micro-second reboot!
+               (format t "~%[Hardware Error] Unknown synth cartridge: ~A~%" template))))
+       t)
 
-	  ;; 1.8. Cellular Time (CELL)
-          ((eq cmd 'cell)
-           (let* ((expanded-args (expand-vars args))
-                  ;; Get the duration of the cell
-                  (raw-dur (car expanded-args))
-                  (dur-val (if (and (listp raw-dur) (eq (car raw-dur) 'quote)) (cadr raw-dur) raw-dur))
-                  (cell-duration (rtm dur-val))
-                  
-                  ;; Get the block of commands
-                  (raw-block (cadr expanded-args))
-                  (block (if (and (listp raw-block) (eq (car raw-block) 'quote)) (cadr raw-block) raw-block))
-                  
-                  ;; Define the Time Bucket boundaries
-                  (cell-start *itime*)
-                  (cell-end (+ cell-start cell-duration)))
-             
-             ;; 1. Evaluate everything inside the cell (the micro-rhythm)
-             (eval-block block)
-             
-             ;; 2. MACRO-RHYTHM ENFORCEMENT: 
-             ;; Snap the global clock to the cell's end, no matter what happened inside!
-             (setf *itime* cell-end)
-             t))
-           
-          ;; 2. Standard Commands
-          ((or (member cmd *allowed-commands*)
-               (note-p cmd))
-           (let ((expanded-args (expand-vars args)))
-             (eval `(,cmd ,@(loop for arg in expanded-args 
-                                  collect (if (and (listp arg) (eq (car arg) 'quote)) 
-                                              arg 
-                                              `(quote ,arg)))))
-             t))
-                 
-          ;; 3. Unknown command
-          (t (error-message sexp) nil)))
-          
-    ;; The Catch
-    (error (e)
-      (format t "~%[Bogu Crash Prevented] ~A~%Failed on: ~A~%" e sexp)
-      nil)))
+      ;; 4.3 Amplitude State
+      ((eq cmd 'VOL)
+       (let* ((expanded-args (expand-vars args))
+              (raw-val (car expanded-args))
+              (val (if (numberp raw-val) raw-val (parse-integer (string raw-val)))))
+         ;; Convert 0-100 scale to 0.0-1.0 float for Csound
+         (setf *velocity* (float (/ val 100.0))))
+       t)
+
+      ;; 4.4 Transposition Context (The Lisp Superpower)
+      ((eq cmd 'TRANSPOSE)
+       (let* ((expanded-args (expand-vars args))
+              (raw-offset (car expanded-args))
+              ;; Safely handle the integer whether it was passed as a number or a string
+              (offset (if (numberp raw-offset) raw-offset (parse-integer (string raw-offset))))
+              ;; THE FIX: Use CDR instead of CADR to scoop up the entire flattened block!
+              (block (cdr expanded-args)))
+         ;; Temporarily shadow the global offset just for the duration of this block!
+         (let ((*transpose-offset* (+ *transpose-offset* offset)))
+           (if (and (listp block) (listp (car block)))
+               (execute-ast block)         ;; It's a bracketed block
+               (execute-node block)))      ;; It's a single flat command
+         t))
+
+      ;; 4.5 System Commands
+      ((eq cmd 'LOAD)
+       (bogu-load (car args))
+       t)
+
+      ;; The Panic Button (Now kills the background thread!)
+      ((eq cmd 'STOP)
+       (when (and *play-thread* (sb-thread:thread-alive-p *play-thread*))
+         (sb-thread:terminate-thread *play-thread*))
+       (format t "~%[PANIC] Halting Audio Engine...~%")
+       (start-audio-engine)
+       (setf *score* nil)
+       (clrhash *playheads*) ;; <--- Eradicated the *itime* ghost!
+       t)
+
+      ;; 5. Standard Physics Commands (seq, poly, fluid, note generation)
+      ;; We use (symbolp cmd) to armor the note-p check so it never crashes on lists
+      ((or (member cmd *allowed-commands*) 
+           (and (symbolp cmd) (note-p cmd)))
+       (let ((expanded-args (expand-vars args)))
+         ;; We quote the expanded args securely right before passing them to Lisp's core eval
+         (eval `(,cmd ,@(loop for arg in expanded-args
+                              collect (if (numberp arg) arg `(quote ,arg)))))
+         t))
+
+      ;; 6. The Safety Net
+      (t (format t "~%[Syntax Warning] Unknown command: ~A~%" cmd) nil))))
 
 (defun read-bogu-input ()
   "Reads input from the REPL, applies ASI, and ignores comments."
   (let ((input (read-line)))
-    
     ;; As long as there are more [ than ], keep asking for more lines!
     (loop while (> (count #\[ input) (count #\] input)) do
-          (format t "  > ") ;; A subtle prompt to show it's a continuation
-          (finish-output)
-          
-          (let* ((next-line (read-line))
-                 (trimmed-line (string-trim " " next-line)))
-            
-            ;; Ignore empty lines and REPL comments!
-            (unless (or (string= trimmed-line "")
-                        (and (> (length trimmed-line) 0) 
-                             (char= (char trimmed-line 0) #\;)))
-              
-              ;; ASI: Glue the new line with " & " instead of a blank space
-              (setf input (concatenate 'string input " & " next-line)))))
+      (format t "  > ") ;; A subtle prompt to show it's a continuation
+      (finish-output)
+      (let* ((next-line (read-line))
+             (trimmed-line (string-trim " " next-line)))
+        ;; Ignore empty lines and REPL comments!
+        (unless (or (string= trimmed-line "")
+                    (and (> (length trimmed-line) 0) 
+                         (char= (char trimmed-line 0) #\;)))
+          ;; ASI: Glue the new line with " & " instead of a blank space
+          (setf input (concatenate 'string input " & " next-line)))))
     input))
 
 (defun composition-repl ()
-  "REPL interface for bogu. Uses iteration instead of recursion for stability."
+  "REPL interface using the full Lexer -> Parser -> AST pipeline."
   (loop
     (format t "~%bogu> ")
-    (finish-output) ; Ensures the prompt prints before waiting for input
-    (let* ((line (read-bogu-input))
-           ;; Safely read the line in case of unmatched parentheses or formatting issues
-           (cmd (handler-case (bogu-reader line)
-                  (error (e)
-                    (format t "~%[Reader Error] Could not parse line: ~A~%Details: ~A~%" line e)
-                    nil))))
-      (when cmd
-        (cond ((eq (car cmd) 'quit)
-               (return (format t "~%Exiting bogu. Goodbye!~%")))
-              ((eq (car cmd) 'reset)
-               (reset-bogu))
-              (t
-               ;; If composition-eval succeeds, push to code history
-               (when (composition-eval cmd)
-                 (push line *bogu-code*))))))))
+    (finish-output)
+    (let ((line (read-bogu-input)))
+      
+      ;; Intercept system commands before they hit the parser
+      (when (string= (string-downcase (string-trim " " line)) "quit")
+        (return (format t "~%Exiting bogu. Goodbye!~%")))
+      (when (string= (string-downcase (string-trim " " line)) "reset")
+        (reset-bogu)
+        (continue))
+
+      ;; The Compiler Pipeline
+      (handler-case
+          (let* ((tokens (lex-bogu-string line))
+                 (ast (parse-bogu-tokens tokens)))
+            (when ast
+              (execute-ast ast)
+              (push line *bogu-code*)))
+        (error (e)
+          (format t "~%[Compiler Error] Could not parse line: ~A~%Details: ~A~%" line e))))))
 
 (defun bogu ()
   "Initializes the Bogu environment and prompts for project loading."
@@ -218,5 +204,5 @@
         (progn
           (format t "~%Loading ~a...~%" project)
           (bogu-load project))))
-          
+  
   (composition-repl))

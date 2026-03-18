@@ -1,27 +1,29 @@
 ;(in-package :bogu)
 
-(defparameter *notes* '((bsharp/c . 0) (csharp/dflat . 1) (d . 2)
-			(dsharp/eflat . 3) (e/fflat . 4)
-			(esharp/f . 5) (fsharp/gflat . 6)
-			(g . 7) (gsharp/aflat . 8) (a . 9)
-			(asharp/bflat . 10) (b/cflat . 11)))
-
+(defparameter *notes* '((b# . 0) (c . 0)
+    (c# . 1) (db . 1)
+    (d . 2)
+    (d# . 3) (eb . 3)
+    (e . 4) (fb . 4)
+    (e# . 5) (f . 5)
+    (f# . 6) (gb . 6)
+    (g . 7)
+    (g# . 8) (ab . 8)
+    (a . 9)
+    (a# . 10) (bb . 10)
+    (b . 11) (cb . 11)))
 
 (defun get-note-value (n)
-  "Converts note number (number of semitones above c) to note value."
-  (dolist (i *notes*)
-    (if (= (cdr i) (mod n 12))
-	(return (car i)))))
+  "Converts note number (semitones above C) to a note symbol."
+  (let ((semitone (mod n 12)))
+    (car (find-if (lambda (pair) (= (cdr pair) semitone)) *notes*))))
 
 (defun get-note-number (v)
-  "Converts note value to note number (number of semitones above c)."
-  (dolist (i *notes*)
-    (if (eql (car i) v)
-	(return (cdr i)))))
-
-(defun note->pch (note octave)
-  "Converts note value to csound's pch value."
-  (+ (* 0.01 (get-note-number note)) octave))
+  "Converts note symbol to a note number. Safely throws an error if the note is missing."
+  (let ((found (assoc v *notes*)))
+    (if found
+        (cdr found)
+        (error "Music Math Error: The pitch '~A' is not defined in the *notes* dictionary." v))))
 
 (defun rtm (rval)
   "Returns rhythm quantity for corresponding rhythm symbol. If given a number, it simply returns that number."
