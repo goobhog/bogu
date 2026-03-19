@@ -1,0 +1,28 @@
+; ==========================================
+; BOGU STANDARD LIBRARY
+; Base definitions built around Middle C (C4)
+; ==========================================
+
+; --- 1. Triad Primitives (Pure Data) ---
+def maj c4 e4 g4
+def min c4 eb4 g4
+def dim c4 eb4 gb4
+def aug c4 e4 g#4
+
+; --- 2. 7th Chord Primitives ---
+def maj7 c4 e4 g4 b4
+def min7 c4 eb4 g4 bb4
+def dom7 c4 e4 g4 bb4
+def dim7 c4 eb4 gb4 a4  ; A4 is Bbb (enharmonically) for a closed voicing
+
+; --- 3. Shape Primitives ---
+def arp-up c4 e4 g4 c5
+def arp-down c5 g4 e4 c4
+def arp-broken c4 g4 e4 c5
+
+; --- 4. System Presets ---
+def rack-basic [ synth 1 sine & synth 2 saw & synth 3 pluck & reboot ]
+
+; --- 5. Scales (For Generative Algorithms) ---
+def penta-c [ c4 d4 e4 g4 a4 c5 d5 e5 g5 a5 c6 ]
+def penta-am [ a3 c4 d4 e4 g4 a4 c5 d5 e5 g5 a5 ]

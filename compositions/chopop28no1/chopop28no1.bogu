@@ -1,4 +1,7 @@
 bpm 144
+vol 25
+synth 1 sine
+synth 2 sine
 def arp1 c1 g1 e2 e3 c3 a3
 def arp1a rst g2 c3 g3 rst a4
 def arp2 b1 g1 f2 f3 d3 a3
