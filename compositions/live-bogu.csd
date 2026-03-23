@@ -1,31 +1,16 @@
 <CsoundSynthesizer>
 <CsOptions>
--odac -L stdin -m0
+-odac -m0 -d
 </CsOptions>
 <CsInstruments>
 sr = 44100
 ksmps = 32
 nchnls = 2
-0dbfs = 4
+0dbfs = 4.0
+
 ga_master init 0
 ga_rvb init 0
-gk_reverb init 0
-giwave ftgen 2, 0, 4096, 10, 1
-instr 98
-gk_reverb = p4
-endin
-
-instr 99
-aWetL, aWetR reverbsc ga_rvb, ga_rvb, 0.85, 12000
-aWetL butterhp aWetL, 150
-aWetR butterhp aWetR, 150
-aMixL = ga_master + (aWetL * gk_reverb)
-aMixR = ga_master + (aWetR * gk_reverb)
-aLimitL = 3.9 * tanh(aMixL / 3.9)
-aLimitR = 3.9 * tanh(aMixR / 3.9)
-outs aLimitL, aLimitR
-clear ga_master, ga_rvb
-endin
+gk_reverb init 0.85
 
 instr 1
 iamp = p5 * 0.15
@@ -157,9 +142,24 @@ vincr ga_master, asig
 vincr ga_rvb, asig
 endin
 
+instr 98
+gk_reverb = p4
+endin
+
+instr 99
+aWetL, aWetR reverbsc ga_rvb, ga_rvb, 0.85, 12000
+aWetL butterhp aWetL, 150
+aWetR butterhp aWetR, 150
+aMixL = ga_master + (aWetL * gk_reverb)
+aMixR = ga_master + (aWetR * gk_reverb)
+aLimitL = 3.9 * tanh(aMixL / 3.9)
+aLimitR = 3.9 * tanh(aMixR / 3.9)
+outs aLimitL, aLimitR
+clear ga_master, ga_rvb
+endin
 </CsInstruments>
 <CsScore>
-f 0 36000
+f 2 0 4096 10 1
 i 99 0 36000
 </CsScore>
 </CsoundSynthesizer>

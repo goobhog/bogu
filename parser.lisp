@@ -1,5 +1,5 @@
 ;; parser.lisp
-(in-package :cl-user)
+(in-package :bogu)
 
 ;; 0. Teach Lisp our custom Bogu syntax characters
 (eval-when (:compile-toplevel :load-toplevel :execute)

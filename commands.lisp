@@ -1,8 +1,15 @@
+(in-package :bogu)
+
 ;;global variables-------------------
 
 ;; Multi-Dimensional Time: Every instrument slot gets its own independent playhead.
 (defparameter *playheads* (make-hash-table))
 (defparameter *bpm* '(60 0 "t"))
+
+(defvar *master-epoch* nil "The exact microsecond the Bogu universe began.")
+(defparameter *beats-per-bar* 4.0 "Standard 4/4 time.")
+(defparameter *quantize-mode* :exact "Can be :exact, :free, or a decimal (e.g., 0.05) for groove slop.")
+
 (defparameter *current-instrument* 1)
 (defparameter *score* '())
 (defparameter *bogu-code* '())
@@ -15,9 +22,8 @@
 (defparameter *loop-threads* (make-hash-table :test 'equal))
 
 (defvar *play-thread* nil)
-(defvar *csound-process* nil)
 
-;; The Master Library of Synth Cartridges (Gain-Staged for Polyphony)
+;; The Master Library of Synth Cartridges
 (defparameter *synth-templates* (make-hash-table))
 
 (setf (gethash 'SINE *synth-templates*) 
@@ -43,12 +49,15 @@ ares linen asig, .01, p3, .1
 vincr ga_master, ares
 vincr ga_rvb, ares")
 
-;; The Active Hardware Rack (Pre-loaded with 16 Sine Waves for backward compatibility)
+;; The Active Hardware Rack (Slots 1-16)
 (defparameter *synth-rack* (make-hash-table))
-(dotimes (i 16)
-  (setf (gethash (1+ i) *synth-rack*) (gethash 'SINE *synth-templates*)))
-
-;; bogu functions -----------------------------------------------
+;; Initialize standard defaults
+(setf (gethash 1 *synth-rack*) (gethash 'SINE *synth-templates*))
+(setf (gethash 2 *synth-rack*) (gethash 'SAW *synth-templates*))
+(setf (gethash 3 *synth-rack*) (gethash 'PLUCK *synth-templates*))
+;; Fill the remaining slots with Sine waves as fallbacks
+(loop for i from 4 to 16 do
+  (setf (gethash i *synth-rack*) (gethash 'SINE *synth-templates*)))
 
 (defun current-time ()
   "Returns the current playhead position for the active instrument."
@@ -59,52 +68,66 @@ vincr ga_rvb, ares")
   (incf (gethash *current-instrument* *playheads* 0.0) amount))
 
 (defun start-audio-engine ()
-  "The Hot-Swap BIOS Flasher. Armor-plated with Reverb Bus, Limiter, and IPC routing."
-  ;; 1. The Assassination
-  (ignore-errors (sb-ext:run-program "pkill" '("-9" "csound") :search t :wait t))
-  (ignore-errors (sb-ext:run-program "killall" '("-9" "csound") :search t :wait t))
-  
-  (sleep 0.5)
+  "Initializes the network connection to the external Csound server."
+  (format t "~%[SYSTEM] CFFI Decoupled. Bogu is running in pure Brain Mode.~%")
+  (format t "[SYSTEM] Ensure you have run 'csound bogu-server.csd' in a separate terminal.~%")
+  (boot-osc-bridge))
 
-  ;; 2. The BIOS Flash
-  (with-open-file (out "compositions/live-bogu.csd" :direction :output :if-exists :supersede)
-    (format out "<CsoundSynthesizer>~%<CsOptions>~%-odac -L stdin -m0~%</CsOptions>~%<CsInstruments>~%")
-    (format out "sr = 44100~%ksmps = 32~%nchnls = 2~%0dbfs = 4~%")
-    
-    ;; THE DSP ARCHITECTURE: Master Bus & Reverb Bus
-    (format out "ga_master init 0~%ga_rvb init 0~%gk_reverb init 0~%")
-    (format out "giwave ftgen 2, 0, 4096, 10, 1~%")
-    
-    ;; INSTR 98: Reverb Automation Controller
-    (format out "instr 98~%gk_reverb = p4~%endin~%~%")
-    
-    ;; INSTR 99: The Master Console
-    (format out "instr 99~%")
-    (format out "aWetL, aWetR reverbsc ga_rvb, ga_rvb, 0.85, 12000~%")
-    
-    (format out "aWetL butterhp aWetL, 150~%")
-    (format out "aWetR butterhp aWetR, 150~%")
-    
-    (format out "aMixL = ga_master + (aWetL * gk_reverb)~%")
-    (format out "aMixR = ga_master + (aWetR * gk_reverb)~%")
-    (format out "aLimitL = 3.9 * tanh(aMixL / 3.9)~%")
-    (format out "aLimitR = 3.9 * tanh(aMixR / 3.9)~%")
-    (format out "outs aLimitL, aLimitR~%")
-    (format out "clear ga_master, ga_rvb~%endin~%~%")
-    
-    ;; Compile the dynamic Hardware Rack
-    (maphash (lambda (id code) (format out "instr ~a~%~a~%endin~%~%" id code)) *synth-rack*)
-    
-    ;; Boot the Master Console (99) and keep the pipe open for 10 hours
-    (format out "</CsInstruments>~%<CsScore>~%f 0 36000~%i 99 0 36000~%</CsScore>~%</CsoundSynthesizer>"))
+(defun bang (instr note-symbol &optional (vol 80))
+  "Fires a note instantly over OSC."
+  (let* ((note-str (string-downcase (string note-symbol)))
+         (octave-str (remove-if-not #'digit-char-p note-str))
+         (octave (if (string= octave-str "") 4 (parse-integer octave-str)))
+         (pitch-str (remove-if #'digit-char-p note-str))
+         (pitch-sym (intern (string-upcase pitch-str)))
+         (pitch (cdr (assoc pitch-sym *notes*))))
 
-  ;; 3. The Resurrection
-  (setf *csound-process*
-        (sb-ext:run-program "csound" '("compositions/live-bogu.csd")
-                            :search t :input :stream :output t :error t :wait nil))
-                            
-  (sleep 0.2)
-  (format t "~%[Hardware] Audio Engine Rebooted. ~a Synths & 1 Master Bus Online.~%" (hash-table-count *synth-rack*)))
+    (unless pitch
+      (format t "~%[ERROR] Invalid note syntax for bang: ~A~%" note-symbol)
+      (return-from bang))
+
+    (let* ((pch (+ octave 4 (/ pitch 100.0)))
+           (vel (/ vol 100.0)))
+      (osc-play instr 0.25 pch vel))))
+
+(defun play ()
+  "Standalone Brain Scheduler: Computes the score and fires OSC packets."
+  (when (and *play-thread* (sb-thread:thread-alive-p *play-thread*))
+    (format t "~%[WARNING] Sequence already playing.~%")
+    (return-from play))
+
+  (setf *score* (sort *score* #'< :key (lambda (x) (getf x :time))))
+
+  (setf *play-thread*
+        (sb-thread:make-thread
+         (lambda ()
+           (let* ((current-bpm (if *bpm* (car *bpm*) 60.0))
+                  (sec-per-beat (float (/ 60.0 current-bpm)))
+                  ;; Establish Lisp's internal high-res start time
+                  (start-time (get-internal-real-time)))
+             
+             (format t "~%[BRAIN] Executing score over OSC...~%bogu> ")
+             (force-output)
+
+             (dolist (event *score*)
+               (let* ((event-time-sec (* (getf event :time) sec-per-beat))
+                      (event-dur-sec (* (getf event :dur) sec-per-beat))
+                      ;; Calculate exactly when Lisp should fire the packet
+                      (target-ms (+ start-time (* event-time-sec internal-time-units-per-second))))
+                 
+                 ;; Sleep safely until the exact microsecond arrives
+                 (loop while (< (get-internal-real-time) target-ms)
+                       do (sleep 0.001))
+                 
+                 ;; Fire the OSC packet!
+                 (osc-play (getf event :instr) 
+                           event-dur-sec 
+                           (getf event :pch) 
+                           (getf event :vel))))
+             
+             (format t "~%[BRAIN] Sequence complete.~%bogu> ")
+             (force-output)))
+         :name "bogu-osc-scheduler")))
 
 (defun load-stdlib ()
   "Silently flashes the Standard Library into *stdlib-vars* ROM."
@@ -152,29 +175,6 @@ vincr ga_rvb, ares")
   
   (load-stdlib)
   (format t "~%[SYSTEM] Memory wiped. Standard Library online.~%"))
-
-(defun bang (instr note-symbol &optional (vol 80))
-  "Game Engine Trigger: Fires a unified note symbol (e.g., 'C4) instantly."
-  (let* ((note-str (string-downcase (string note-symbol)))
-         ;; Extract the octave (all trailing digits)
-         (octave-str (remove-if-not #'digit-char-p note-str))
-         (octave (if (string= octave-str "") 4 (parse-integer octave-str)))
-         ;; Extract the pitch (everything that isn't a digit)
-         (pitch-str (remove-if #'digit-char-p note-str))
-         (pitch-sym (intern (string-upcase pitch-str)))
-         (pitch (cdr (assoc pitch-sym *notes*))))
-
-    (unless pitch
-      (format t "~%[ERROR] Invalid note syntax for bang: ~A~%" note-symbol)
-      (return-from bang))
-
-    (let* ((pch (+ octave 4 (/ pitch 100.0)))
-           (vel (/ vol 100.0)))
-      (if (and *csound-process* (sb-ext:process-alive-p *csound-process*))
-          (let ((csound-in (sb-ext:process-input *csound-process*)))
-            (format csound-in "i ~a 0 0.25 ~,3f ~,2f~%" instr pch vel)
-            (force-output csound-in))
-          (format t "~%[ERROR] Hardware offline. Cannot bang.~%")))))
 
 (defun def (name &rest body)
   "Binds a bogu command to a variable in an O(1) Hash Table."
@@ -307,8 +307,9 @@ vincr ga_rvb, ares")
         (setf current-idx (max 0 (min (- len 1) current-idx)))))))
 
 (defun rst (rval)
-  "Advances the playhead of the current instrument by the rhythm value."
-  (advance-time (rtm rval)))
+  "A silent rest. Does nothing, allowing seq/poly to naturally advance the playhead."
+  (declare (ignore rval))
+  nil)
 
 (defun bpm (n); add optional nth bpms
   "Sets beats per minute."
@@ -426,82 +427,10 @@ vincr ga_rvb, ares")
             (cond 
               ((string= "%" line) (format out "~a~%" line))
               ((or (null parsed)
-                   (member cmd '(play save help vars where bogu-load load play-live start-audio-engine)))
+                   (member cmd '(play save help vars where bogu-load load start-audio-engine)))
                nil)
               (t (format out "~a~%" line)))))))
     (format t "saved \"compositions/~a/~a.bogu\"~%" fname fname)))
-
-(defun play (&optional filename)
-  "Compiles the current state into a .csd and plays it."
-  (when filename
-    (setf *current-project* (string-downcase (string filename))))
-  
-  (unless *current-project*
-    (format t "Error: This project has no name yet. Please type 'save' to name it first.~%")
-    (return-from play))
-  
-  (let ((fname *current-project*))
-    (bogu->csd fname)
-    (format t "playing \"compositions/~a/~a.csd\"...~%" fname fname)
-    (sb-ext:run-program "/usr/bin/csound" 
-                        (list (namestring (comp-path fname (bogu-folder fname) "csd")))
-                        :search t   
-                        :output t   
-                        :error t)))
-
-(defun play-live ()
-  "Plays the *score* queue, guarded against dead processes and Broken Pipes."
-  (when (and *play-thread* (sb-thread:thread-alive-p *play-thread*))
-    (format t "~%[WARNING] Sequence already playing. Type 'stop' first.~%")
-    (return-from play-live))
-  
-  ;; 1. THE PRE-FLIGHT CHECK: Is Csound actually alive?
-  (unless (and *csound-process* (sb-ext:process-alive-p *csound-process*))
-    (format t "~%[HARDWARE ERROR] Csound is dead! Rebooting Audio Engine automatically...~%")
-    (start-audio-engine))
-  
-  (setf *score* (sort *score* #'< :key (lambda (x) (getf x :time))))
-  
-  (setf *play-thread*
-        (sb-thread:make-thread
-         (lambda ()
-           ;; 2. THE CATCHER'S MITT: Intercept the Broken Pipe crash!
-           (handler-case 
-               (let ((csound-in (sb-ext:process-input *csound-process*))
-                     (current-bpm (if *bpm* (car *bpm*) 60.0)))
-                 
-                 (format t "~%[LIVE ENGINE STARTED] Streaming at ~A BPM...~%bogu> " current-bpm)
-                 (force-output)
-                 
-                 (let ((start-time-internal (get-internal-real-time))
-                       (sec-per-beat (/ 60.0 current-bpm)))
-                   
-                   (dolist (event *score*)
-                     (let* ((event-time-beats (getf event :time))
-                            (event-dur-beats (getf event :dur))
-                            (event-time-sec (* event-time-beats sec-per-beat))
-                            (event-dur-sec (* event-dur-beats sec-per-beat))
-                            (target-internal (+ start-time-internal 
-                                                (* event-time-sec internal-time-units-per-second))))
-                       (loop
-                         (let ((now (get-internal-real-time)))
-                           (if (>= now target-internal)
-                               (return)
-                               (sleep (max 0.001 (/ (- target-internal now) internal-time-units-per-second))))))
-                       
-                       (format csound-in "i ~a 0 ~,3f ~a ~a~%" 
-                               (getf event :instr) event-dur-sec 
-                               (getf event :pch) (getf event :vel))
-                       (force-output csound-in)))
-                   
-                   (format t "~%[LIVE ENGINE STOPPED] Sequence complete.~%bogu> ")
-                   (force-output)))
-             
-             ;; If the pipe breaks mid-song, gracefully print a warning and exit the thread.
-             (sb-int:broken-pipe ()
-               (format t "~%[FATAL] Broken Pipe: Csound disconnected mid-stream! Type 'start-audio-engine' to reboot.~%bogu> ")
-               (force-output))))
-         :name "bogu-sequencer")))
 
 (defun bogu-load (&optional filename)
   "Loads a project using the new Lexer -> Parser -> AST Compiler Pipeline."
@@ -558,6 +487,41 @@ vincr ga_rvb, ares")
             ;; The ELSE branch if the file is not found
             (format t "Error: File ~a.bogu not found.~%" target)))
       (format t "loaded \"compositions/~a/~a.bogu\"~%" target target))))
+
+(defun calculate-sync-target ()
+  "Determines the exact internal-time for a loop to start based on *quantize-mode*."
+  ;; 1. The Big Bang: If time hasn't started, start it now.
+  (unless *master-epoch*
+    (setf *master-epoch* (get-internal-real-time)))
+    
+  (cond
+    ;; MODE: FREE (Start exactly when Enter is pressed)
+    ((eq *quantize-mode* :free)
+     (get-internal-real-time))
+     
+    ;; MODE: EXACT or GROOVE SLOP
+    (t
+     (let* ((now (get-internal-real-time))
+            (elapsed-internal (- now *master-epoch*))
+            (elapsed-sec (/ elapsed-internal internal-time-units-per-second))
+            (current-bpm (if *bpm* (car *bpm*) 60.0))
+            (sec-per-beat (/ 60.0 current-bpm))
+            (sec-per-bar (* sec-per-beat *beats-per-bar*))
+            
+            ;; Calculate the next clean downbeat boundary
+            (current-bar (floor (/ elapsed-sec sec-per-bar)))
+            (next-bar-sec (* (1+ current-bar) sec-per-bar))
+            (perfect-target (+ *master-epoch* (round (* next-bar-sec internal-time-units-per-second)))))
+                               
+       (if (eq *quantize-mode* :exact)
+           perfect-target
+           ;; Apply "The Pocket": Add/subtract a random fraction of the slop window
+           (let* ((slop-sec (if (numberp *quantize-mode*) *quantize-mode* 0.0))
+                  (slop-internal (round (* slop-sec internal-time-units-per-second)))
+                  (drift (if (> slop-internal 0)
+                             (- (random (* 2 slop-internal)) slop-internal)
+                             0)))
+             (+ perfect-target drift)))))))
 
 ;; macros ----------------------------
 

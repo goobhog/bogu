@@ -1,3 +1,5 @@
+(in-package :bogu)
+
 (defun flatten (l)
   "Removes parentheses from a multi-dimensional list."
   (cond ((null l) nil)

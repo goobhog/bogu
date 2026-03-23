@@ -1,9 +1,13 @@
 ;; boot.lisp
 (format t "~%[BOOT] Initiating Bogu compilation sequence...~%")
 
+(defpackage :bogu
+  (:use :cl))
+
 ;; 0. Prepare the Environment (Load dependencies BEFORE compiling)
 (format t "[BOOT] Loading external libraries...~%")
 (ql:quickload "cl-ppcre")
+;;(ql:quickload "osc")
 
 ;; 1. Automatically detect the EXACT directory this script is sitting in
 (defparameter *bogu-dir*
@@ -13,6 +17,7 @@
 ;; 2. Define the strict dependency order
 (defparameter *bogu-build-order*
   '("utilities.lisp"
+    "audio-pipe.lisp"   ;; <-- The new bridge!
     "parser.lisp"
     "music-math.lisp"
     "commands.lisp"

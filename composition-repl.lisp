@@ -1,4 +1,6 @@
-(defparameter *allowed-commands* '(def vars seq play rpt rst save help i reset poly sarp del bpm where bogu-load play-live start-audio-engine cell fluid transpose vol synth stop reverb reboot walk seek sync bang live-loop stop-loop engrave))
+(in-package :bogu)
+
+(defparameter *allowed-commands* '(quantize def vars seq play rpt rst save help i reset poly sarp del bpm where bogu-load cell fluid transpose vol synth stop reverb reboot walk seek sync bang live-loop stop-loop engrave))
 
 (defun execute-ast (ast)
   "Walks the Abstract Syntax Tree and executes each command node in sequence."
@@ -11,25 +13,19 @@
 
   (let* ((cmd (car node))
          (args (cdr node))
-         ;; Check user vars first, THEN check standard library
          (user-body (and (symbolp cmd) (gethash cmd *vars*)))
          (std-body (and (symbolp cmd) (gethash cmd *stdlib-vars*)))
          (var-body (or user-body std-body)))
          
     (cond
-      ;; 0. Block Unwrapping
-      ((listp cmd)
-       (execute-ast node)
-       t)
+      ((listp cmd) (execute-ast node) t)
 
-      ;; 1. Variable Execution
       (var-body
        (if (listp (car var-body))
            (execute-ast var-body)             
-           (execute-node var-body))           
+           (execute-node var-body))            
        t)
 
-      ;; 2. Variable Definition
       ((eq cmd 'DEF)
        (let* ((var-name (car args))
               (var-contents (cdr args))
@@ -40,7 +36,6 @@
          (format t "~%[Bound] ~A -> ~A~%" var-name stored-ast))
        t)
 
-      ;; 3. Cellular Time
       ((eq cmd 'CELL)
        (let* ((expanded-args (expand-vars args))
               (dur-val (car expanded-args))
@@ -52,7 +47,6 @@
          (setf (gethash *current-instrument* *playheads*) cell-end))
        t)
 
-      ;; 4. Logic & Iteration
       ((eq cmd 'LOOP)
        (let* ((expanded-args (expand-vars args))
               (n (car expanded-args))
@@ -74,25 +68,7 @@
        (let* ((expanded-args (expand-vars args))
               (id (car expanded-args)))
          (setf *current-instrument* id)
-         (format t "~%[TRACK] Switched to Instrument ~A (Current Time: ~,3fs)~%" 
-                 id (current-time)))
-       t)
-
-      ((eq cmd 'SYNTH)
-       (let* ((expanded-args (expand-vars args))
-              (id (car expanded-args))
-              (template (cadr expanded-args)))
-         (let ((code (gethash template *synth-templates*)))
-           (if code
-               (progn
-                 (setf (gethash id *synth-rack*) code)
-                 (format t "~%[BIOS] Instrument ~A memory updated to ~A (Pending Reboot)...~%" id template))
-               (format t "~%[Hardware Error] Unknown synth cartridge: ~A~%" template))))
-       t)
-
-      ((eq cmd 'REBOOT)
-       (format t "~%[BIOS] Flashing Hardware Rack...~%")
-       (start-audio-engine)
+         (format t "~%[TRACK] Switched to Instrument ~A~%" id))
        t)
 
       ((eq cmd 'VOL)
@@ -106,16 +82,8 @@
        (let* ((expanded-args (expand-vars args))
               (raw-val (car expanded-args))
               (val (if (numberp raw-val) raw-val (parse-integer (string raw-val)))))
-         ;; 1. Push to score for offline exports
-         (push (list :type :note :instr 98 :time (current-time) :dur 0.01 
-                     :pitch 0 :octave 0 :pch (float (/ val 100.0)) :vel 0)
-               *score*)
-         ;; 2. Instantly change the hardware mixing console in real-time!
-         (when (and *csound-process* (sb-ext:process-alive-p *csound-process*))
-           (let ((csound-in (sb-ext:process-input *csound-process*)))
-             (format csound-in "i 98 0 0.01 ~,2f 0~%" (float (/ val 100.0)))
-             (force-output csound-in)))
-         (format t "~%[FX] Reverb automation set to ~A%~%" val))
+         (osc-play 98 0.01 0.0 (float (/ val 100.0)))
+         (format t "~%[FX] Reverb set to ~A%~%" val))
        t)
 
       ((eq cmd 'TRANSPOSE)
@@ -139,14 +107,13 @@
               (instr (cadr expanded-args)))
          (if (and filename instr)
              (bogu->ly (string-downcase (string filename)) instr)
-             (format t "~%[Syntax Error] engrave requires a filename and a track number. (e.g., engrave \"mysong\" 3)~%")))
+             (format t "~%[Syntax Error] engrave requires a filename and a track number.~%")))
        t)
 
       ((eq cmd 'STOP)
        (when (and *play-thread* (sb-thread:thread-alive-p *play-thread*))
          (sb-thread:terminate-thread *play-thread*))
-       (format t "~%[TRANSPORT] Halting Audio Engine...~%")
-       (start-audio-engine)
+       (format t "~%[TRANSPORT] Sequence Halted.~%")
        t)
 
       ((eq cmd 'BANG)
@@ -156,70 +123,95 @@
          (bang instr note))
        t)
 
-      ;; 4.8 The Algorave Looper (Silenced and Validated)
+      ((eq cmd 'QUANTIZE)
+       (let* ((expanded-args (expand-vars args))
+              (mode (car expanded-args)))
+         (cond
+           ((string-equal mode "EXACT") (setf *quantize-mode* :exact))
+           ((string-equal mode "FREE") (setf *quantize-mode* :free))
+           ((numberp mode) (setf *quantize-mode* (float mode)))
+           (t (setf *quantize-mode* :exact)))
+         (format t "~%[CLOCK] Master Sync Mode set to: ~A~%" *quantize-mode*))
+       t)
+
       ((eq cmd 'LIVE-LOOP)
        (let* ((expanded-args (expand-vars args))
               (name (car expanded-args))
               (dur-val (cadr expanded-args))
               (block (caddr expanded-args)))
          
-         ;; 1. Safety Check: Did the user forget the duration or the block?
          (unless (and name dur-val block)
            (format t "~%[Syntax Error] live-loop requires a name, duration, and block.~%")
-           (format t "Example: live-loop bass 4 [ seq q c4 ]~%")
            (return-from execute-node t))
 
-         (let ((duration (if (numberp dur-val) dur-val (rtm dur-val))))
+         (let* ((raw-dur (if (numberp dur-val) dur-val (ignore-errors (parse-integer (string dur-val)))))
+                (duration (or raw-dur (rtm dur-val))))
+           
            (setf (gethash name *live-loops*) block)
            (unless (and (gethash name *loop-threads*)
                         (sb-thread:thread-alive-p (gethash name *loop-threads*)))
-             (format t "~%[LOOP] Starting live-loop '~A' (~A beats)...~%" name duration)
+             (format t "~%[LOOP] Armed live-loop '~A' (~A beats). Syncing to Network...~%" name duration)
              (setf (gethash name *loop-threads*)
                    (sb-thread:make-thread
                     (lambda ()
-                      (let ((next-time-internal (get-internal-real-time)))
-                        (loop
-                          (let ((current-block (gethash name *live-loops*)))
-                            (unless current-block (return))
-                            (let ((*score* '())
-                                  (*playheads* (make-hash-table))
-                                  (*current-instrument* *current-instrument*)
-                                  (*transpose-offset* *transpose-offset*))
-                              
-                              ;; 2. THE SILENCER: Redirects all prints from this thread into a black hole!
-                              (with-open-stream (*standard-output* (make-broadcast-stream))
-                                (execute-ast current-block))
-                              
-                              (let* ((current-bpm (if *bpm* (car *bpm*) 60.0))
-                                     (sec-per-beat (/ 60.0 current-bpm)))
-                                (when (and *csound-process* (sb-ext:process-alive-p *csound-process*))
-                                  (let ((csound-in (sb-ext:process-input *csound-process*)))
-                                    (dolist (event *score*)
-                                      (let ((start-sec (* (getf event :time) sec-per-beat))
-                                            (dur-sec (* (getf event :dur) sec-per-beat)))
-                                        (format csound-in "i ~a ~,3f ~,3f ~,3f ~,2f~%"
-                                                (getf event :instr) start-sec dur-sec
-                                                (getf event :pch) (getf event :vel))))
-                                    (force-output csound-in)))))
-                            (let* ((current-bpm (if *bpm* (car *bpm*) 60.0))
-                                   (sec-per-beat (/ 60.0 current-bpm))
-                                   (loop-dur-sec (* duration sec-per-beat))
-                                   (internal-dur (* loop-dur-sec internal-time-units-per-second)))
-                              (incf next-time-internal internal-dur)
-                              (let ((now (get-internal-real-time)))
-                                (if (> next-time-internal now)
-                                    (sleep (/ (- next-time-internal now) internal-time-units-per-second))
-                                    (setf next-time-internal now))))))))
+                      (handler-case 
+                          (let* ((current-bpm (if *bpm* (car *bpm*) 60.0))
+                                 (sec-per-beat (float (/ 60.0 current-bpm)))
+                                 (loop-dur-sec (* duration sec-per-beat))
+                                 ;; 1. Grab Lisp's high-res internal clock
+                                 (next-loop-start-time (get-internal-real-time)))
+                            
+                            (loop
+                              (let ((current-block (gethash name *live-loops*)))
+                                  (unless current-block (return))
+                                  (let ((*score* '())
+                                        (*playheads* (make-hash-table))
+                                        (*current-instrument* *current-instrument*)
+                                        (*transpose-offset* *transpose-offset*))
+                                    
+                                    (execute-ast current-block)
+                                    (setf *score* (sort *score* #'< :key (lambda (x) (getf x :time))))
+                                    
+                                    (let* ((current-bpm (if *bpm* (car *bpm*) 60.0))
+                                           (sec-per-beat (float (/ 60.0 current-bpm))))
+                                      
+                                      (dolist (event *score*)
+                                        (let* ((event-time-sec (* (getf event :time) sec-per-beat))
+                                               (event-dur-sec (* (getf event :dur) sec-per-beat))
+                                               ;; 2. Find the exact millisecond the packet should fire
+                                               (target-ms (+ next-loop-start-time (* event-time-sec internal-time-units-per-second))))
+                                          
+                                          ;; 3. Sleep until that exact millisecond
+                                          (loop while (< (get-internal-real-time) target-ms)
+                                                do (sleep 0.001))
+                                          
+                                          ;; 4. Fire the OSC packet across the bridge
+                                          (osc-play (getf event :instr) 
+                                                    event-dur-sec 
+                                                    (getf event :pch) 
+                                                    (getf event :vel))))))
+                                  
+                                  (let* ((current-bpm (if *bpm* (car *bpm*) 60.0))
+                                         (sec-per-beat (float (/ 60.0 current-bpm)))
+                                         (loop-dur-sec (* duration sec-per-beat)))
+                                    
+                                    ;; Advance the loop timer
+                                    (incf next-loop-start-time (* loop-dur-sec internal-time-units-per-second))
+                                    (loop while (< (get-internal-real-time) next-loop-start-time)
+                                          do (sleep 0.001))))))
+                        (error (e)
+                          (format t "~%[FATAL LOOP ERROR in '~A'] ~A~%bogu> " name e)
+                          (force-output))))
                     :name (format nil "bogu-loop-~A" name))))))
        t)
 
-      ;; 4.9 The Loop Assassin 
       ((eq cmd 'STOP-LOOP)
        (let* ((expanded-args (expand-vars args))
               (name (car expanded-args)))
          (if (eq name 'ALL)
              (progn
                (maphash (lambda (k thread)
+                          (declare (ignore k))
                           (when (and thread (sb-thread:thread-alive-p thread))
                             (sb-thread:terminate-thread thread)))
                         *loop-threads*)
@@ -237,17 +229,14 @@
                    (format t "~%[LOOP Error] No loop named '~A' is running.~%" name)))))
        t)
 
-      ;; 5. Standard Physics Commands
       ((or (member cmd *allowed-commands*) 
            (and (symbolp cmd) (note-p cmd)))
        (let* ((expanded-args (expand-vars args))
-              ;; The Universal Safety Net: Flatten all arguments before evaluation
               (flat-args (flatten expanded-args)))
          (eval `(,cmd ,@(loop for arg in flat-args
                               collect (if (numberp arg) arg `(quote ,arg))))))
        t)
 
-      ;; 6. The Safety Net
       (t (format t "~%[Syntax Warning] Unknown command: ~A~%" cmd) nil))))
 
 (defun read-bogu-input ()
@@ -288,22 +277,20 @@
 
 (defun bogu ()
   "Initializes the Bogu environment and prompts for project loading."
+  (reset-bogu) 
+  (start-audio-engine)
+  (sleep 0.1) 
   (format t "~%===========================================================~%")
   (format t "                    WELCOME TO BOGU                        ~%")
   (format t "===========================================================~%")
   (format t " Type 'help' for a comprehensive list of commands.~%~%")
-
-  (reset-bogu) 
-  
   (format t " Type a project name to LOAD, or press ENTER for NEW.~%")
   (format t " Project name: ")
   (finish-output) 
-  
   (let ((project (read-line)))
     (if (string= project "")
         (format t "~%Starting new blank project...~%")
         (progn
           (format t "~%Loading ~a...~%" project)
           (bogu-load project))))
-  
   (composition-repl))
