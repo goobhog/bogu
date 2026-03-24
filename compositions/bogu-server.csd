@@ -42,19 +42,42 @@ instr 3 ; PLUCK
   vincr ga_rvb, ares
 endin
 
+; --- INSTRUMENT 4: WARM PAD / SUB BASS ---
+instr 4
+  idur = p3
+  ifreq = cpspch(p4)   ; Convert Bogu's pitch decimal (e.g., 8.00) to Hz
+  iamp = p5 * 0.15     ; Read Bogu's velocity (e.g., 0.8)
+
+  ; 1. The Oscillator: Generate the raw saw wave first!
+  asig vco2 iamp, ifreq
+
+  ; 2. The Envelope: Shape the audio with a slow attack and release
+  aenv linen asig, 0.5, idur, 0.8 
+
+  ; 3. The Filter: Roll off the harsh highs to make it sound dark and rolling
+  afilt moogladder aenv, ifreq * 3, 0.2
+
+  ; ROUTING: Send the audio to the Master Bus and the Reverb Bus!
+  vincr ga_master, afilt
+  vincr ga_rvb, afilt
+endin
+
+; --- THE FX CONTROLLERS ---
+instr 98
+  gk_reverb = p5
+endin
+
 ; --- THE NETWORK BRAIN & MASTER BUS ---
 instr 99
-  k_instr init 0
-  k_dur init 0
-  k_pitch init 0
-  k_vol init 0
-  
-
   ; Master Reverb and Limiter
   aWetL, aWetR reverbsc ga_rvb, ga_rvb, 0.85, 12000
   aMixL = ga_master + (aWetL * gk_reverb)
   aMixR = ga_master + (aWetR * gk_reverb)
-  outs 3.9 * tanh(aMixL/3.9), 3.9 * tanh(aMixR/3.9)
+  ; The Analog Soft-Clipper
+  ; The output will gracefully saturate but will NEVER exceed 0.95 (leaving 5% safety headroom)
+  aOutL = 0.95 * tanh(aMixL)
+  aOutR = 0.95 * tanh(aMixR)
+  outs aOutL, aOutR
   clear ga_master, ga_rvb
 endin
 

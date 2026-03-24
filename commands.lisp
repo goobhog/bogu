@@ -9,6 +9,7 @@
 (defvar *master-epoch* nil "The exact microsecond the Bogu universe began.")
 (defparameter *beats-per-bar* 4.0 "Standard 4/4 time.")
 (defparameter *quantize-mode* :exact "Can be :exact, :free, or a decimal (e.g., 0.05) for groove slop.")
+(defparameter *current-articulation* nil "Tags notes for both Csound physics and LilyPond notation.")
 
 (defparameter *current-instrument* 1)
 (defparameter *score* '())
@@ -110,20 +111,19 @@ vincr ga_rvb, ares")
              (force-output)
 
              (dolist (event *score*)
-               (let* ((event-time-sec (* (getf event :time) sec-per-beat))
-                      (event-dur-sec (* (getf event :dur) sec-per-beat))
-                      ;; Calculate exactly when Lisp should fire the packet
-                      (target-ms (+ start-time (* event-time-sec internal-time-units-per-second))))
-                 
-                 ;; Sleep safely until the exact microsecond arrives
-                 (loop while (< (get-internal-real-time) target-ms)
-                       do (sleep 0.001))
-                 
-                 ;; Fire the OSC packet!
-                 (osc-play (getf event :instr) 
-                           event-dur-sec 
-                           (getf event :pch) 
-                           (getf event :vel))))
+                   ;; THE FIX: Only play actual audio notes! Ignore visual metadata.
+                   (when (eq (getf event :type) :note)
+                     (let* ((event-time-sec (* (getf event :time) sec-per-beat))
+                            (event-dur-sec (* (getf event :dur) sec-per-beat))
+                            (target-ms (+ start-time (* event-time-sec internal-time-units-per-second))))
+                       
+                       (loop while (< (get-internal-real-time) target-ms)
+                             do (sleep 0.001))
+                       
+                       (osc-play (getf event :instr) 
+                                 event-dur-sec 
+                                 (getf event :pch) 
+                                 (getf event :vel)))))
              
              (format t "~%[BRAIN] Sequence complete.~%bogu> ")
              (force-output)))
@@ -175,6 +175,10 @@ vincr ga_rvb, ares")
   
   (load-stdlib)
   (format t "~%[SYSTEM] Memory wiped. Standard Library online.~%"))
+
+(defun reset ()
+  "Allows the 'reset' command to be evaluated directly from a .bogu script."
+  (reset-bogu))
 
 (defun def (name &rest body)
   "Binds a bogu command to a variable in an O(1) Hash Table."
@@ -266,6 +270,15 @@ vincr ga_rvb, ares")
     (maphash (lambda (k v) (setf (gethash k *playheads*) max-time)) *playheads*)
     (format t "~%[TIMELINE] All tracks synchronized to ~,3fs~%" max-time)))
 
+(defun synth (slot-id template-name)
+  "Loads a synth template into a specific hardware rack slot."
+  (let ((template (gethash template-name *synth-templates*)))
+    (if template
+        (progn
+          (setf (gethash slot-id *synth-rack*) template)
+          (format t "~%[RACK] Loaded ~A into Slot ~A~%" template-name slot-id))
+        (format t "~%[RACK ERROR] No synth template named ~A found in memory.~%" template-name))))
+
 (defun fluid (density rval &rest notes)
   "Scatters an arbitrary <density> of random notes within a time boundary."
   (let* ((r (rtm rval))
@@ -333,38 +346,37 @@ vincr ga_rvb, ares")
   t)
 
 (defun schedule-note (pitch-in octave rval &optional instr-override)
-  "Armor-Plated: Handles pitch names, raw numbers, AND transposition math."
-  (let* ((pitch (if (numberp pitch-in) 
-                    pitch-in 
-                    (cdr (assoc pitch-in *notes*))))
+  "Armor-Plated: Handles pitch, transposition, and articulation metadata."
+  (let* ((pitch (if (numberp pitch-in) pitch-in (cdr (assoc pitch-in *notes*))))
          (instr (or instr-override *current-instrument*)))
     
-    ;; 1. Safety check MUST happen before we try to do math!
     (unless pitch 
       (error "Music Math Error: The pitch '~A' is not defined in the *notes* dictionary." pitch-in))
 
-    ;; 2. NOW we can safely do the transposition math
     (let* ((new-pitch (+ pitch *transpose-offset*))
            (new-octave octave))
 
-      ;; 3. Standard Lisp Octave Wrapping
-      (loop while (> new-pitch 11) do
-        (decf new-pitch 12)
-        (incf new-octave))
+      ;; Octave Wrapping Math...
+      (loop while (> new-pitch 11) do (decf new-pitch 12) (incf new-octave))
+      (loop while (< new-pitch 0) do (incf new-pitch 12) (decf new-octave))
       
-      (loop while (< new-pitch 0) do
-        (incf new-pitch 12)
-        (decf new-octave))
-      
-      ;; 4. Build the event
-      (let ((new-event (list :type :note
-                             :instr instr
-                             :time (current-time)
-                             :dur (rtm rval)
-                             :pitch new-pitch
-                             :octave new-octave
-                             :pch (+ new-octave 4 (/ new-pitch 100.0))
-                             :vel *velocity*)))
+      ;; --- THE UNIFIED CONCEPT MATH ---
+      (let* ((written-rhythm (rtm rval))
+             ;; If staccato is active, cut the physics audio duration in half!
+             (physics-dur (if (eq *current-articulation* :staccato)
+                              (* written-rhythm 0.5)
+                              written-rhythm))
+             
+             (new-event (list :type :note
+                              :instr instr
+                              :time (current-time)
+                              :dur physics-dur          ;; For Csound
+                              :written-dur written-rhythm ;; For LilyPond
+                              :pitch new-pitch
+                              :octave new-octave
+                              :pch (+ new-octave 4 (/ new-pitch 100.0))
+                              :vel *velocity*
+                              :art *current-articulation*))) ;; Tag the metadata!
         (push new-event *score*)))))
 
 (defun seq (rval &rest notes)

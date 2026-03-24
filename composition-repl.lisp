@@ -1,6 +1,6 @@
 (in-package :bogu)
 
-(defparameter *allowed-commands* '(quantize def vars seq play rpt rst save help i reset poly sarp del bpm where bogu-load cell fluid transpose vol synth stop reverb reboot walk seek sync bang live-loop stop-loop engrave))
+(defparameter *allowed-commands* '(quantize def vars seq play rpt rst save help i reset poly sarp del bpm where bogu-load cell fluid transpose free staccato vol synth stop reverb reboot walk seek sync bang live-loop stop-loop engrave))
 
 (defun execute-ast (ast)
   "Walks the Abstract Syntax Tree and executes each command node in sequence."
@@ -97,6 +97,26 @@
                (execute-node block))))
        t)
 
+      ;; --- THE UNIFIED CONCEPT BLOCK ---
+      ((eq cmd 'STACCATO)
+       (let ((*current-articulation* :staccato)) 
+         (if (and (listp args) (listp (car args)))
+             (execute-ast args)         
+             (execute-node args)))
+       t)
+
+      ;; --- THE UNMETERED NOTATION FORCEFIELD ---
+      ((eq cmd 'FREE)
+       (push (list :type :meta :subtype :cadenza-on 
+                   :instr *current-instrument* :time (current-time)) *score*)
+       (if (and (listp args) (listp (car args)))
+           (execute-ast args)         
+           (execute-node args))
+       (push (list :type :meta :subtype :cadenza-off 
+                   :instr *current-instrument* :time (current-time)) *score*)
+       (format t "~%[TIMELINE] Unmetered 'free' block executed.~%")
+       t)
+
       ((eq cmd 'LOAD)
        (bogu-load (car args))
        t)
@@ -158,34 +178,32 @@
                           (let* ((current-bpm (if *bpm* (car *bpm*) 60.0))
                                  (sec-per-beat (float (/ 60.0 current-bpm)))
                                  (loop-dur-sec (* duration sec-per-beat))
-                                 ;; 1. Grab Lisp's high-res internal clock
                                  (next-loop-start-time (get-internal-real-time)))
                             
                             (loop
                               (let ((current-block (gethash name *live-loops*)))
-                                  (unless current-block (return))
-                                  (let ((*score* '())
-                                        (*playheads* (make-hash-table))
-                                        (*current-instrument* *current-instrument*)
-                                        (*transpose-offset* *transpose-offset*))
+                                (unless current-block (return))
+                                (let ((*score* '())
+                                      (*playheads* (make-hash-table))
+                                      (*current-instrument* *current-instrument*)
+                                      (*transpose-offset* *transpose-offset*))
+                                  
+                                  (execute-ast current-block)
+                                  (setf *score* (sort *score* #'< :key (lambda (x) (getf x :time))))
+                                  
+                                  (let* ((current-bpm (if *bpm* (car *bpm*) 60.0))
+                                         (sec-per-beat (float (/ 60.0 current-bpm))))
                                     
-                                    (execute-ast current-block)
-                                    (setf *score* (sort *score* #'< :key (lambda (x) (getf x :time))))
-                                    
-                                    (let* ((current-bpm (if *bpm* (car *bpm*) 60.0))
-                                           (sec-per-beat (float (/ 60.0 current-bpm))))
-                                      
-                                      (dolist (event *score*)
+                                    (dolist (event *score*)
+                                      ;; THE METADATA SHIELD: Only process actual audio notes
+                                      (when (eq (getf event :type) :note)
                                         (let* ((event-time-sec (* (getf event :time) sec-per-beat))
                                                (event-dur-sec (* (getf event :dur) sec-per-beat))
-                                               ;; 2. Find the exact millisecond the packet should fire
                                                (target-ms (+ next-loop-start-time (* event-time-sec internal-time-units-per-second))))
                                           
-                                          ;; 3. Sleep until that exact millisecond
                                           (loop while (< (get-internal-real-time) target-ms)
                                                 do (sleep 0.001))
                                           
-                                          ;; 4. Fire the OSC packet across the bridge
                                           (osc-play (getf event :instr) 
                                                     event-dur-sec 
                                                     (getf event :pch) 
@@ -195,15 +213,14 @@
                                          (sec-per-beat (float (/ 60.0 current-bpm)))
                                          (loop-dur-sec (* duration sec-per-beat)))
                                     
-                                    ;; Advance the loop timer
                                     (incf next-loop-start-time (* loop-dur-sec internal-time-units-per-second))
                                     (loop while (< (get-internal-real-time) next-loop-start-time)
-                                          do (sleep 0.001))))))
+                                          do (sleep 0.001))))))) ;; <--- The missing 7th parenthesis is now correctly placed here!
                         (error (e)
                           (format t "~%[FATAL LOOP ERROR in '~A'] ~A~%bogu> " name e)
-                          (force-output))))
+                          (force-output)))) ;; <--- The extra parenthesis has been removed from here!
                     :name (format nil "bogu-loop-~A" name))))))
-       t)
+               t)
 
       ((eq cmd 'STOP-LOOP)
        (let* ((expanded-args (expand-vars args))

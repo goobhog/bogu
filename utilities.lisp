@@ -121,56 +121,116 @@
         ((>= dur 0.25) "16")
         (t "32")))
 
-;; --- THE MASTER COMPILER ---
-
 (defun bogu->ly (filename target-instr)
-  "Compiles the timeline of a specific instrument into a LilyPond PDF and PNG."
+  "Compiles the timeline into a LilyPond PDF. Handles individual parts or ALL tracks."
   (let* ((ly-path (comp-path filename (bogu-folder filename) "ly"))
-         (raw-score (remove-if-not (lambda (x) (= (getf x :instr) target-instr)) *score*))
-         ;; Sort chronologically so we can calculate rests correctly
-         (sorted-score (sort (copy-list raw-score) #'< :key (lambda (x) (getf x :time))))
-         (current-time 0.0))
-         
-    (unless sorted-score
-      (format t "~%[ENGRAVER Error] No notes found for Instrument ~A.~%" target-instr)
-      (return-from bogu->ly nil))
+         ;; 1. THE CONDUCTOR: Detect all active tracks if 'ALL is passed!
+         (all-instrs (if (string-equal (string target-instr) "ALL")
+                         (remove-duplicates (mapcar (lambda (x) (getf x :instr)) *score*))
+                         (list (if (numberp target-instr) target-instr (parse-integer (string target-instr))))))
+         ;; Sort them so Track 1 is always at the top of the page
+         (sorted-instrs (sort (copy-list all-instrs) #'<)))
 
-    ;; 1. Generate the LilyPond Source Code
     (with-open-file (out ly-path :direction :output :if-exists :supersede)
       (format out "\\version \"2.24.0\"~%")
-      (format out "\\header { title = \"Bogu Score: ~A\" composer = \"Live Coded in Lisp\" }~%" filename)
-      (format out "\\score {~%  \\new Staff {~%    \\clef treble~%    \\time 4/4~%    ")
+      (format out "\\header { title = \"Bogu Score: ~A\" }~%" filename)
+      (format out "\\score {~%")
       
-      (dolist (event sorted-score)
-        (let* ((note-time (getf event :time))
-               (note-dur (getf event :dur))
-               (note-pch (getf event :pch))
-               (rest-time (- note-time current-time)))
-          
-          ;; Insert a rest if there is a gap (quantized to 32nd note threshold)
-          (when (>= rest-time 0.125)
-            (format out "r~A " (dur->lily rest-time)))
-            
-          ;; Translate and write the note
-          (format out "~A~A " (pch->lily note-pch) (dur->lily note-dur))
-          
-          ;; Advance the internal playhead
-          (setf current-time (+ note-time note-dur))))
-          
-      (format out "~%  }~%  \\layout {}~%}~%"))
-      
+      ;; 2. THE BINDER: Wrap everything in a StaffGroup for the Conductor Bracket
+      (format out "  \\new StaffGroup <<~%")
+
+      ;; 3. THE LOOP: Build a separate staff for every active instrument
+      (dolist (instr sorted-instrs)
+        (let* ((raw-score (remove-if-not (lambda (x) (= (getf x :instr) instr)) *score*))
+               (sorted-score (sort (copy-list raw-score) #'< :key (lambda (x) (getf x :time))))
+               (current-time 0.0)
+               (grouped-score nil)
+               (current-group nil)
+               (current-clef "treble"))
+
+          ;; Open the Staff and print the Margin Label
+          (format out "    \\new Staff {~%")
+          (format out "      \\set Staff.instrumentName = \"Track ~A\"~%" instr)
+
+          (if (null sorted-score)
+              (format t "~%[ENGRAVER Warning] Track ~A is completely empty.~%" instr)
+              (progn
+                ;; Grouping Engine (Chords vs Notes)
+                (dolist (event sorted-score)
+                  (if (null current-group)
+                      (push event current-group)
+                      (if (= (getf event :time) (getf (car current-group) :time))
+                          (push event current-group)
+                          (progn
+                            (push (reverse current-group) grouped-score)
+                            (setf current-group (list event))))))
+                (when current-group (push (reverse current-group) grouped-score))
+                (setf grouped-score (reverse grouped-score))
+
+                ;; Printing Engine
+                (dolist (group grouped-score)
+                  (let* ((first-event (car group))
+                         (event-time (getf first-event :time))
+                         (rest-time (- event-time current-time))
+                         (meta-events (remove-if-not (lambda (x) (eq (getf x :type) :meta)) group))
+                         (note-events (remove-if-not (lambda (x) (eq (getf x :type) :note)) group)))
+
+                    ;; Rests
+                    (when (and note-events (>= rest-time 0.125))
+                      (format out "r~A " (dur->lily rest-time)))
+
+                    ;; Metadata (Clefs, Cadenzas)
+                    (dolist (m meta-events)
+                      (cond
+                        ((eq (getf m :subtype) :clef) (format out "\\clef \"~A\" " (getf m :val)))
+                        ((eq (getf m :subtype) :cadenza-on) (format out "\\cadenzaOn \\omit Stem "))
+                        ((eq (getf m :subtype) :cadenza-off) (format out "\\cadenzaOff \\undo \\omit Stem \\bar \"|\" "))))
+
+                    ;; Auto-Clef & Notes
+                    (when note-events
+                      (let ((sum-pitch 0.0))
+                        (dolist (n note-events) (incf sum-pitch (getf n :pch)))
+                        (let ((avg-pitch (/ sum-pitch (length note-events))))
+                          (cond
+                            ((and (< avg-pitch 7.07) (string= current-clef "treble"))
+                             (format out "\\clef bass ")
+                             (setf current-clef "bass"))
+                            ((and (>= avg-pitch 8.00) (string= current-clef "bass"))
+                             (format out "\\clef treble ")
+                             (setf current-clef "treble")))))
+
+                      (let ((note-dur (or (getf (car note-events) :written-dur) (getf (car note-events) :dur))))
+                        (if (= 1 (length note-events))
+                            (format out "~A~A~A " 
+                                    (pch->lily (getf (car note-events) :pch)) 
+                                    (dur->lily note-dur)
+                                    (if (eq (getf (car note-events) :art) :staccato) "-." ""))
+                            (progn
+                              (format out "<")
+                              (dolist (note note-events)
+                                (format out "~A " (pch->lily (getf note :pch))))
+                              (format out ">~A~A " 
+                                      (dur->lily note-dur)
+                                      (if (eq (getf (car note-events) :art) :staccato) "-." ""))))
+                        (setf current-time (+ event-time note-dur))))))
+                ))
+          ;; Close individual staff
+          (format out "~%    }~%")))
+
+      ;; Close StaffGroup and apply global layout rules
+      (format out "  >>~%")
+      (format out "  \\layout { \\context { \\Voice \\remove \"Note_heads_engraver\" \\consists \"Completion_heads_engraver\" } }~%}~%"))
+
     (format t "~%[ENGRAVER] LilyPond source generated at ~A~%" ly-path)
-    
-    ;; 2. The System Call: Explicitly using /usr/bin/lilypond
+
+    ;; 4. THE SYSTEM CALL
     (handler-case
         (let ((lily-proc (sb-ext:run-program "/usr/bin/lilypond" 
-                                            (list "--png" "--pdf" 
-                                                  "--output" (namestring (uiop:pathname-directory-pathname ly-path))
-                                                  (namestring ly-path)) 
-                                            :search nil 
-                                            :wait t)))
+                                             (list "--png" "--pdf" 
+                                                   "--output" (namestring (uiop:pathname-directory-pathname ly-path))
+                                                   (namestring ly-path)) 
+                                             :search nil :wait t)))
           (if (zerop (sb-ext:process-exit-code lily-proc))
-              (format t "[ENGRAVER] Success! PDF and PNG generated in the project folder.~%")
-              (format t "[ERROR] LilyPond found the file but failed to compile. Check your syntax.~%")))
-      (error (e)
-        (format t "[ERROR] Could not execute /usr/bin/lilypond.~%Details: ~A~%" e)))))
+              (format t "[ENGRAVER] Success! PDF generated.~%")
+              (format t "[ERROR] LilyPond failed to compile.~%")))
+      (error (e) (format t "[ERROR] Could not execute lilypond.~%~A~%" e)))))
