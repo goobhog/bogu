@@ -13,6 +13,14 @@
     (a# . 10) (bb . 10)
     (b . 11) (cb . 11)))
 
+(defparameter *scale-intervals*
+  '((MAJOR . (0 2 4 5 7 9 11))
+    (MINOR . (0 2 3 5 7 8 10))
+    (DORIAN . (0 2 3 5 7 9 10))
+    (PHRYGIAN . (0 1 3 5 7 8 10))
+    (LYDIAN . (0 2 4 6 7 9 11))
+    (MIXOLYDIAN . (0 2 4 5 7 9 10))))
+
 (defun get-note-value (n)
   "Converts note number (semitones above C) to a note symbol."
   (let ((semitone (mod n 12)))

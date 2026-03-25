@@ -1,6 +1,6 @@
 (in-package :bogu)
 
-(defparameter *allowed-commands* '(quantize def vars seq play rpt rst save help i reset poly sarp del bpm where bogu-load cell fluid transpose free staccato vol synth stop reverb reboot walk seek sync bang live-loop stop-loop engrave))
+(defparameter *allowed-commands* '(quantize def vars seq play rpt rst save help i reset poly sarp del bpm where bogu-load cell fluid transpose free staccato vol synth stop reverb reboot walk seek sync bang live-loop stop-loop engrave retro invert key sweep pan wait))
 
 (defun execute-ast (ast)
   "Walks the Abstract Syntax Tree and executes each command node in sequence."
@@ -47,6 +47,12 @@
          (setf (gethash *current-instrument* *playheads*) cell-end))
        t)
 
+      ((eq cmd 'WAIT)
+       (let* ((expanded-args (expand-vars args))
+              (dur (rtm (car expanded-args))))
+         (advance-time dur))
+       t)
+
       ((eq cmd 'LOOP)
        (let* ((expanded-args (expand-vars args))
               (n (car expanded-args))
@@ -71,19 +77,54 @@
          (format t "~%[TRACK] Switched to Instrument ~A~%" id))
        t)
 
+      ((eq cmd 'KEY)
+       (let* ((expanded-args (expand-vars args)))
+         (if (or (null expanded-args) (eq (car expanded-args) 'OFF) (eq (car expanded-args) 'NIL))
+             (progn
+               (setf *current-key* nil)
+               (format t "~%[THEORY] Diatonic Mode OFF (Absolute Chromatic).~%"))
+             (let ((tonic (car expanded-args))
+                   (mode (cadr expanded-args)))
+               (setf *current-key* (list tonic mode))
+               (format t "~%[THEORY] Key set to ~A ~A.~%" tonic mode))))
+       t)
+
+      ((eq cmd 'PAN)
+       (let* ((expanded (expand-vars args))
+              (val (/ (car expanded) 100.0)))
+         ;; THE FIX: Fire instantly down the pipe! Don't wait for the playhead.
+         (osc-control *current-instrument* 2 0.01 val val)
+         (format t "~%[MIXER] Track ~A Pan -> ~A%~%" *current-instrument* (car expanded)))
+       t)
+
       ((eq cmd 'VOL)
-       (let* ((expanded-args (expand-vars args))
-              (raw-val (car expanded-args))
-              (val (if (numberp raw-val) raw-val (parse-integer (string raw-val)))))
-         (setf *velocity* (float (/ val 100.0))))
+       (let* ((expanded (expand-vars args))
+              (val (/ (car expanded) 100.0)))
+         ;; THE FIX: Fire instantly! 
+         (osc-control *current-instrument* 1 0.01 val val)
+         (format t "~%[MIXER] Track ~A Volume -> ~A%~%" *current-instrument* (car expanded)))
        t)
 
       ((eq cmd 'REVERB)
-       (let* ((expanded-args (expand-vars args))
-              (raw-val (car expanded-args))
-              (val (if (numberp raw-val) raw-val (parse-integer (string raw-val)))))
-         (osc-play 98 0.01 0.0 (float (/ val 100.0)))
-         (format t "~%[FX] Reverb set to ~A%~%" val))
+       (let* ((expanded (expand-vars args))
+              (val (/ (car expanded) 100.0)))
+         ;; THE FIX: Fire instantly!
+         (osc-control *current-instrument* 3 0.01 val val)
+         (format t "~%[MIXER] Track ~A Reverb -> ~A%~%" *current-instrument* (car expanded)))
+       t)
+
+      ((eq cmd 'SWEEP)
+       (let* ((expanded (expand-vars args))
+              (param-sym (car expanded))
+              (start (/ (cadr expanded) 100.0))
+              (end (/ (caddr expanded) 100.0))
+              (dur (rtm (cadddr expanded)))
+              (param-id (cond ((eq param-sym 'VOL) 1)
+                              ((eq param-sym 'PAN) 2)
+                              ((eq param-sym 'REVERB) 3)
+                              (t 1))))
+         (push (list :type :control :instr *current-instrument* :time (current-time)
+                     :dur dur :param param-id :start start :end end) *score*))
        t)
 
       ((eq cmd 'TRANSPOSE)
@@ -95,6 +136,86 @@
            (if (and (listp block) (listp (car block)))
                (execute-ast block)         
                (execute-node block))))
+       t)
+
+      ((eq cmd 'RETRO)
+       (let* ((block (car args))
+              (sandbox-score '())
+              (start-time (current-time)))
+         
+         (let ((*score* '())
+               (*playheads* (make-hash-table)))
+           (setf (gethash *current-instrument* *playheads*) 0.0)
+           
+           (cond
+             ((symbolp block) (execute-node (list block)))
+             ((and (listp block) (listp (car block))) (execute-ast block))
+             (t (execute-node block)))
+           
+           (setf sandbox-score *score*))
+           
+         (when sandbox-score
+           (let* ((max-time (apply #'max (mapcar (lambda (x) (+ (getf x :time) (getf x :dur))) sandbox-score))))
+             (dolist (event sandbox-score)
+               (let ((new-time (- max-time (+ (getf event :time) (getf event :dur)))))
+                 (setf (getf event :time) (+ start-time new-time))
+                 (push event *score*)))
+             (setf (gethash *current-instrument* *playheads*) (+ start-time max-time)))))
+       t)
+
+      ((eq cmd 'INVERT)
+       (let* ((block (car args))
+              (sandbox-score '())
+              (start-time (current-time)))
+         
+         ;; 1. The Sandbox Capture
+         (let ((*score* '())
+               (*playheads* (make-hash-table)))
+           (setf (gethash *current-instrument* *playheads*) 0.0)
+           
+           (cond
+             ((symbolp block) (execute-node (list block)))
+             ((and (listp block) (listp (car block))) (execute-ast block))
+             (t (execute-node block)))
+           
+           ;; Sort chronologically to safely capture the "first note"
+           (setf sandbox-score (sort *score* #'< :key (lambda (x) (getf x :time)))))
+           
+         ;; 2. The Mathematical Inversion
+         (when sandbox-score
+           ;; Find the first note to act as the "axis" of inversion
+           (let* ((first-note (find-if (lambda (x) (eq (getf x :type) :note)) sandbox-score))
+                  (axis-st (if first-note 
+                               (let* ((p (getf first-note :pch))
+                                      (oct (truncate p))
+                                      (pc (round (* (- p oct) 100))))
+                                 (+ (* oct 12) pc))
+                               0))
+                  (max-time 0.0))
+             
+             (dolist (event sandbox-score)
+               (when (eq (getf event :type) :note)
+                 ;; Convert Csound PCH (e.g., 8.00) to absolute semitones
+                 (let* ((p (getf event :pch))
+                        (oct (truncate p))
+                        (pc (round (* (- p oct) 100)))
+                        (current-st (+ (* oct 12) pc))
+                        ;; Flip the distance across the axis
+                        (diff (- current-st axis-st))
+                        (new-st (- axis-st diff))
+                        ;; Convert back to Csound PCH
+                        (new-oct (truncate new-st 12))
+                        (new-pc (mod new-st 12)))
+                   (setf (getf event :pch) (float (+ new-oct (/ new-pc 100.0))))))
+               
+               ;; Shift time forward to the real timeline and push
+               (let ((shifted-time (+ start-time (getf event :time))))
+                 (setf (getf event :time) shifted-time)
+                 (setf max-time (max max-time (+ (- shifted-time start-time) (getf event :dur))))
+                 (push event *score*)))
+             
+             ;; Advance the real playhead
+             (setf (gethash *current-instrument* *playheads*) (+ start-time max-time)))))
        t)
 
       ;; --- THE UNIFIED CONCEPT BLOCK ---
@@ -165,7 +286,11 @@
            (return-from execute-node t))
 
          (let* ((raw-dur (if (numberp dur-val) dur-val (ignore-errors (parse-integer (string dur-val)))))
-                (duration (or raw-dur (rtm dur-val))))
+                (duration (or raw-dur (rtm dur-val)))
+                ;; FIX 1: CAPTURE THE ENVIRONMENT STATE BEFORE SPAWNING THE THREAD
+                (spawn-instrument *current-instrument*)
+                (spawn-transpose *transpose-offset*)
+                (spawn-key *current-key*))
            
            (setf (gethash name *live-loops*) block)
            (unless (and (gethash name *loop-threads*)
@@ -178,15 +303,18 @@
                           (let* ((current-bpm (if *bpm* (car *bpm*) 60.0))
                                  (sec-per-beat (float (/ 60.0 current-bpm)))
                                  (loop-dur-sec (* duration sec-per-beat))
-                                 (next-loop-start-time (get-internal-real-time)))
+                                 ;; FIX 2: APPLY THE QUANTIZATION TARGET!
+                                 (next-loop-start-time (calculate-sync-target)))
                             
                             (loop
                               (let ((current-block (gethash name *live-loops*)))
                                 (unless current-block (return))
+                                ;; FIX 3: RESTORE THE CAPTURED STATE FOR THIS THREAD
                                 (let ((*score* '())
                                       (*playheads* (make-hash-table))
-                                      (*current-instrument* *current-instrument*)
-                                      (*transpose-offset* *transpose-offset*))
+                                      (*current-instrument* spawn-instrument)
+                                      (*transpose-offset* spawn-transpose)
+                                      (*current-key* spawn-key))
                                   
                                   (execute-ast current-block)
                                   (setf *score* (sort *score* #'< :key (lambda (x) (getf x :time))))
@@ -195,8 +323,9 @@
                                          (sec-per-beat (float (/ 60.0 current-bpm))))
                                     
                                     (dolist (event *score*)
-                                      ;; THE METADATA SHIELD: Only process actual audio notes
-                                      (when (eq (getf event :type) :note)
+                                      ;; Catch BOTH notes and controls
+                                      (when (or (eq (getf event :type) :note)
+                                                (eq (getf event :type) :control))
                                         (let* ((event-time-sec (* (getf event :time) sec-per-beat))
                                                (event-dur-sec (* (getf event :dur) sec-per-beat))
                                                (target-ms (+ next-loop-start-time (* event-time-sec internal-time-units-per-second))))
@@ -204,10 +333,10 @@
                                           (loop while (< (get-internal-real-time) target-ms)
                                                 do (sleep 0.001))
                                           
-                                          (osc-play (getf event :instr) 
-                                                    event-dur-sec 
-                                                    (getf event :pch) 
-                                                    (getf event :vel))))))
+                                          ;; Route the data to the correct pipe function!
+                                          (if (eq (getf event :type) :note)
+                                              (osc-play (getf event :instr) event-dur-sec (getf event :pch) (getf event :vel))
+                                              (osc-control (getf event :instr) (getf event :param) event-dur-sec (getf event :start) (getf event :end)))))))
                                   
                                   (let* ((current-bpm (if *bpm* (car *bpm*) 60.0))
                                          (sec-per-beat (float (/ 60.0 current-bpm)))
@@ -215,12 +344,12 @@
                                     
                                     (incf next-loop-start-time (* loop-dur-sec internal-time-units-per-second))
                                     (loop while (< (get-internal-real-time) next-loop-start-time)
-                                          do (sleep 0.001))))))) ;; <--- The missing 7th parenthesis is now correctly placed here!
+                                          do (sleep 0.001))))))) 
                         (error (e)
                           (format t "~%[FATAL LOOP ERROR in '~A'] ~A~%bogu> " name e)
-                          (force-output)))) ;; <--- The extra parenthesis has been removed from here!
+                          (force-output))))
                     :name (format nil "bogu-loop-~A" name))))))
-               t)
+       t)
 
       ((eq cmd 'STOP-LOOP)
        (let* ((expanded-args (expand-vars args))
@@ -257,17 +386,29 @@
       (t (format t "~%[Syntax Warning] Unknown command: ~A~%" cmd) nil))))
 
 (defun read-bogu-input ()
-  "Reads input from the REPL, applies ASI, and ignores comments."
+  "Reads input from the REPL, applies SMART ASI, and ignores comments."
   (let ((input (read-line)))
     (loop while (> (count #\[ input) (count #\] input)) do
       (format t "  > ") 
       (finish-output)
       (let* ((next-line (read-line))
-             (trimmed-line (string-trim " " next-line)))
-        (unless (or (string= trimmed-line "")
-                    (and (> (length trimmed-line) 0) 
-                         (char= (char trimmed-line 0) #\;)))
-          (setf input (concatenate 'string input " & " next-line)))))
+             (trimmed-next (string-trim " " next-line))
+             (trimmed-prev (string-trim " " input)))
+        (unless (or (string= trimmed-next "")
+                    (and (> (length trimmed-next) 0) 
+                         (char= (char trimmed-next 0) #\;)))
+          
+          ;; THE FIX: Smart Automatic Semicolon Insertion
+          ;; Only insert '&' if we are NOT opening or closing a block.
+          (let* ((len-prev (length trimmed-prev))
+                 (last-char-prev (if (> len-prev 0) (char trimmed-prev (1- len-prev)) #\Space))
+                 (first-char-next (if (> (length trimmed-next) 0) (char trimmed-next 0) #\Space))
+                 (separator (if (or (char= last-char-prev #\[)
+                                    (char= first-char-next #\[)
+                                    (char= first-char-next #\]))
+                                " "      ; <-- Just a space, keeping arguments together!
+                                " & "))) ; <-- Add the '&' separator!
+            (setf input (concatenate 'string input separator next-line))))))
     input))
 
 (defun composition-repl ()

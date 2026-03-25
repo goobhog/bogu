@@ -1,90 +1,152 @@
 <CsoundSynthesizer>
-
 <CsOptions>
 -odac -m0 -d -L /tmp/bogu_pipe
 </CsOptions>
-
 <CsInstruments>
 sr = 44100
 ksmps = 32
 nchnls = 2
 0dbfs = 1.0
+;===========================================
+; 1. The True Stereo Busses
+;===========================================
+ga_master_L init 0
+ga_master_R init 0
+ga_rvb_L init 0
+ga_rvb_R init 0
 
-ga_master init 0
-ga_rvb init 0
-gk_reverb init 0.85
-
-; --- HARDWARE RACK ---
+; ==========================================
+; 2. THE SYNTHS
+; ==========================================
 instr 1 ; SINE
   icps = cpspch(p4)
   iamp = p5 * 0.15
-  ares linen iamp, .03, p3, .05
-  asig poscil ares, icps, 2
-  vincr ga_master, asig
-  vincr ga_rvb, asig
+  
+  Svol sprintf "vol_%d", int(p1)
+  Span sprintf "pan_%d", int(p1)
+  Srvb sprintf "rvb_%d", int(p1)
+  
+  ; 1. INIT-RATE: Fetch exactly once when the note is born
+  ivol chnget Svol
+  ipan chnget Span
+  irvb chnget Srvb
+  
+  ; 2. CONTROL-RATE: Fetch continuously while the note plays
+  kvol chnget Svol
+  kpan chnget Span
+  krvb chnget Srvb
+
+  kvol_sm portk kvol, 0.05, ivol
+  kpan_sm portk kpan, 0.05, ipan
+  krvb_sm portk krvb, 0.05, irvb
+
+  asig poscil iamp, icps, 2
+  ares linen asig, .03, p3, .05
+
+  aL, aR pan2 (ares * kvol_sm), kpan_sm
+  vincr ga_master_L, aL
+  vincr ga_master_R, aR
+  vincr ga_rvb_L, aL * krvb_sm
+  vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 2 ; SAW
   icps = cpspch(p4)
   iamp = p5 * 0.15
+  Svol sprintf "vol_%d", int(p1)
+  Span sprintf "pan_%d", int(p1)
+  Srvb sprintf "rvb_%d", int(p1)
+  ivol chnget Svol
+  ipan chnget Span
+  irvb chnget Srvb
+  kvol chnget Svol
+  kpan chnget Span
+  krvb chnget Srvb
+  kvol_sm portk kvol, 0.05, ivol
+  kpan_sm portk kpan, 0.05, ipan
+  krvb_sm portk krvb, 0.05, irvb
+
   asig vco2 iamp, icps, 0
   ares linen asig, .03, p3, .05
-  vincr ga_master, ares
-  vincr ga_rvb, ares
+
+  aL, aR pan2 (ares * kvol_sm), kpan_sm
+  vincr ga_master_L, aL
+  vincr ga_master_R, aR
+  vincr ga_rvb_L, aL * krvb_sm
+  vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 3 ; PLUCK
   icps = cpspch(p4)
   iamp = p5 * 0.15
+  Svol sprintf "vol_%d", int(p1)
+  Span sprintf "pan_%d", int(p1)
+  Srvb sprintf "rvb_%d", int(p1)
+  ivol chnget Svol
+  ipan chnget Span
+  irvb chnget Srvb
+  kvol chnget Svol
+  kpan chnget Span
+  krvb chnget Srvb
+  kvol_sm portk kvol, 0.05, ivol
+  kpan_sm portk kpan, 0.05, ipan
+  krvb_sm portk krvb, 0.05, irvb
+
   asig pluck iamp, icps, icps, 2, 1
   ares linen asig, .01, p3, .1
-  vincr ga_master, ares
-  vincr ga_rvb, ares
+
+  aL, aR pan2 (ares * kvol_sm), kpan_sm
+  vincr ga_master_L, aL
+  vincr ga_master_R, aR
+  vincr ga_rvb_L, aL * krvb_sm
+  vincr ga_rvb_R, aR * krvb_sm
 endin
 
-; --- INSTRUMENT 4: WARM PAD / SUB BASS ---
-instr 4
-  idur = p3
-  ifreq = cpspch(p4)   ; Convert Bogu's pitch decimal (e.g., 8.00) to Hz
-  iamp = p5 * 0.15     ; Read Bogu's velocity (e.g., 0.8)
+; ==========================================
+; 3. THE FX AND MASTER BUS
+; ==========================================
 
-  ; 1. The Oscillator: Generate the raw saw wave first!
-  asig vco2 iamp, ifreq
-
-  ; 2. The Envelope: Shape the audio with a slow attack and release
-  aenv linen asig, 0.5, idur, 0.8 
-
-  ; 3. The Filter: Roll off the harsh highs to make it sound dark and rolling
-  afilt moogladder aenv, ifreq * 3, 0.2
-
-  ; ROUTING: Send the audio to the Master Bus and the Reverb Bus!
-  vincr ga_master, afilt
-  vincr ga_rvb, afilt
+instr 98 ; STEREO REVERB
+  ; Uses Csound's high-quality stereo reverb opcode
+  aL, aR reverbsc ga_rvb_L, ga_rvb_R, 0.85, 7000
+  vincr ga_master_L, aL
+  vincr ga_master_R, aR
 endin
 
-; --- THE FX CONTROLLERS ---
-instr 98
-  gk_reverb = p5
-endin
-
-; --- THE NETWORK BRAIN & MASTER BUS ---
-instr 99
-  ; Master Reverb and Limiter
-  aWetL, aWetR reverbsc ga_rvb, ga_rvb, 0.85, 12000
-  aMixL = ga_master + (aWetL * gk_reverb)
-  aMixR = ga_master + (aWetR * gk_reverb)
-  ; The Analog Soft-Clipper
-  ; The output will gracefully saturate but will NEVER exceed 0.95 (leaving 5% safety headroom)
-  aOutL = 0.95 * tanh(aMixL)
-  aOutR = 0.95 * tanh(aMixR)
+instr 99 ; MASTER BUS
+  aOutL = 0.95 * tanh(ga_master_L)
+  aOutR = 0.95 * tanh(ga_master_R)
   outs aOutL, aOutR
-  clear ga_master, ga_rvb
+  
+  ; Clear the bus for the next cycle
+  ga_master_L = 0
+  ga_master_R = 0
+  ga_rvb_L = 0
+  ga_rvb_R = 0
+endin
+
+instr 100 ; CONTROL ROUTER
+  itrack = p4
+  iparam = p5
+  istart = p6
+  iend = p7
+  
+  kval linseg istart, p3, iend
+  
+  if iparam == 1 then
+    chnset kval, sprintf("vol_%d", itrack)
+  elseif iparam == 2 then
+    chnset kval, sprintf("pan_%d", itrack)
+  elseif iparam == 3 then
+    chnset kval, sprintf("rvb_%d", itrack)
+  endif
 endin
 
 </CsInstruments>
 <CsScore>
 f 2 0 4096 10 1
 ; Keep the server open and listening for 24 hours
-i 99 0 86400 
+i 99 0 86400
+i 98 0 86400
 </CsScore>
 </CsoundSynthesizer>

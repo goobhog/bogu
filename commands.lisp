@@ -12,6 +12,7 @@
 (defparameter *current-articulation* nil "Tags notes for both Csound physics and LilyPond notation.")
 
 (defparameter *current-instrument* 1)
+(defparameter *current-key* nil)
 (defparameter *score* '())
 (defparameter *bogu-code* '())
 (defparameter *vars* (make-hash-table :test 'equal))
@@ -28,27 +29,76 @@
 (defparameter *synth-templates* (make-hash-table))
 
 (setf (gethash 'SINE *synth-templates*) 
-      "iamp = p5 * 0.15
-ares linen iamp, .03, p3, .05
-asig poscil ares, cpspch(p4), 2
-vincr ga_master, asig
-vincr ga_rvb, asig")
+      "icps = cpspch(p4)
+iamp = p5 * 0.15
+Svol sprintf \"vol_%d\", int(p1)
+Span sprintf \"pan_%d\", int(p1)
+Srvb sprintf \"rvb_%d\", int(p1)
+ivol chnget Svol
+ipan chnget Span
+irvb chnget Srvb
+kvol chnget Svol
+kpan chnget Span
+krvb chnget Srvb
+kvol_sm portk kvol, 0.05, ivol
+kpan_sm portk kpan, 0.05, ipan
+krvb_sm portk krvb, 0.05, irvb
+
+asig poscil iamp, icps, 2
+ares linen asig, .03, p3, .05
+aL, aR pan2 (ares * kvol_sm), kpan_sm
+vincr ga_master_L, aL
+vincr ga_master_R, aR
+vincr ga_rvb_L, aL * krvb_sm
+vincr ga_rvb_R, aR * krvb_sm")
 
 (setf (gethash 'SAW *synth-templates*) 
       "icps = cpspch(p4)
 iamp = p5 * 0.15
+Svol sprintf \"vol_%d\", int(p1)
+Span sprintf \"pan_%d\", int(p1)
+Srvb sprintf \"rvb_%d\", int(p1)
+ivol chnget Svol
+ipan chnget Span
+irvb chnget Srvb
+kvol chnget Svol
+kpan chnget Span
+krvb chnget Srvb
+kvol_sm portk kvol, 0.05, ivol
+kpan_sm portk kpan, 0.05, ipan
+krvb_sm portk krvb, 0.05, irvb
+
 asig vco2 iamp, icps, 0
 ares linen asig, .03, p3, .05
-vincr ga_master, ares
-vincr ga_rvb, ares")
+aL, aR pan2 (ares * kvol_sm), kpan_sm
+vincr ga_master_L, aL
+vincr ga_master_R, aR
+vincr ga_rvb_L, aL * krvb_sm
+vincr ga_rvb_R, aR * krvb_sm")
 
 (setf (gethash 'PLUCK *synth-templates*) 
       "icps = cpspch(p4)
 iamp = p5 * 0.15
+Svol sprintf \"vol_%d\", int(p1)
+Span sprintf \"pan_%d\", int(p1)
+Srvb sprintf \"rvb_%d\", int(p1)
+ivol chnget Svol
+ipan chnget Span
+irvb chnget Srvb
+kvol chnget Svol
+kpan chnget Span
+krvb chnget Srvb
+kvol_sm portk kvol, 0.05, ivol
+kpan_sm portk kpan, 0.05, ipan
+krvb_sm portk krvb, 0.05, irvb
+
 asig pluck iamp, icps, icps, 2, 1
 ares linen asig, .01, p3, .1
-vincr ga_master, ares
-vincr ga_rvb, ares")
+aL, aR pan2 (ares * kvol_sm), kpan_sm
+vincr ga_master_L, aL
+vincr ga_master_R, aR
+vincr ga_rvb_L, aL * krvb_sm
+vincr ga_rvb_R, aR * krvb_sm")
 
 ;; The Active Hardware Rack (Slots 1-16)
 (defparameter *synth-rack* (make-hash-table))
@@ -70,6 +120,7 @@ vincr ga_rvb, ares")
 
 (defun start-audio-engine ()
   "Initializes the network connection to the external Csound server."
+  (setf *random-state* (make-random-state t))
   (format t "~%[SYSTEM] CFFI Decoupled. Bogu is running in pure Brain Mode.~%")
   (format t "[SYSTEM] Ensure you have run 'csound bogu-server.csd' in a separate terminal.~%")
   (boot-osc-bridge))
@@ -111,19 +162,18 @@ vincr ga_rvb, ares")
              (force-output)
 
              (dolist (event *score*)
-                   ;; THE FIX: Only play actual audio notes! Ignore visual metadata.
-                   (when (eq (getf event :type) :note)
-                     (let* ((event-time-sec (* (getf event :time) sec-per-beat))
-                            (event-dur-sec (* (getf event :dur) sec-per-beat))
-                            (target-ms (+ start-time (* event-time-sec internal-time-units-per-second))))
-                       
-                       (loop while (< (get-internal-real-time) target-ms)
-                             do (sleep 0.001))
-                       
-                       (osc-play (getf event :instr) 
-                                 event-dur-sec 
-                                 (getf event :pch) 
-                                 (getf event :vel)))))
+               (when (or (eq (getf event :type) :note)
+                         (eq (getf event :type) :control))
+                 (let* ((event-time-sec (* (getf event :time) sec-per-beat))
+                        (event-dur-sec (* (getf event :dur) sec-per-beat))
+                        (target-ms (+ start-time (* event-time-sec internal-time-units-per-second))))
+                   
+                   (loop while (< (get-internal-real-time) target-ms)
+                         do (sleep 0.001))
+                   
+                   (if (eq (getf event :type) :note)
+                       (osc-play (getf event :instr) event-dur-sec (getf event :pch) (getf event :vel))
+                       (osc-control (getf event :instr) (getf event :param) event-dur-sec (getf event :start) (getf event :end))))))
              
              (format t "~%[BRAIN] Sequence complete.~%bogu> ")
              (force-output)))
@@ -346,38 +396,64 @@ vincr ga_rvb, ares")
   t)
 
 (defun schedule-note (pitch-in octave rval &optional instr-override)
-  "Armor-Plated: Handles pitch, transposition, and articulation metadata."
+  "Armor-Plated: Handles pitch, DIATONIC transposition, and articulation metadata."
   (let* ((pitch (if (numberp pitch-in) pitch-in (cdr (assoc pitch-in *notes*))))
          (instr (or instr-override *current-instrument*)))
     
     (unless pitch 
       (error "Music Math Error: The pitch '~A' is not defined in the *notes* dictionary." pitch-in))
 
-    (let* ((new-pitch (+ pitch *transpose-offset*))
-           (new-octave octave))
+    ;; --- THE DIATONIC ENGINE ---
+    (let ((transposed-pitch
+           (if (or (null *current-key*) (= *transpose-offset* 0))
+               ;; Opt-in bypassed: Absolute Chromatic Math
+               (+ pitch *transpose-offset*)
+               ;; Diatonic Math Enabled!
+               (let* ((root-sym (car *current-key*))
+                      (scale-sym (cadr *current-key*))
+                      (root-pitch (cdr (assoc root-sym *notes*)))
+                      (intervals (cdr (assoc scale-sym *scale-intervals*))))
+                 
+                 (if (not intervals)
+                     (+ pitch *transpose-offset*) ;; Fallback if scale unknown
+                     (let* ((scale-pitches (mapcar (lambda (x) (+ root-pitch x)) intervals))
+                            (normalized-pitch (mod pitch 12))
+                            ;; Find the note's integer degree (0-6) within the scale
+                            (degree (position normalized-pitch scale-pitches :key (lambda (x) (mod x 12)))))
+                       
+                       (if (null degree)
+                           (+ pitch *transpose-offset*) ;; If note is out of key, shift chromatically
+                           ;; Calculate the Diatonic Shift!
+                           (let* ((new-degree (+ degree *transpose-offset*))
+                                  (octave-shift (floor new-degree (length scale-pitches)))
+                                  (wrapped-degree (mod new-degree (length scale-pitches)))
+                                  (new-absolute-pitch (nth wrapped-degree scale-pitches)))
+                             (+ new-absolute-pitch (* octave-shift 12))))))))))
 
-      ;; Octave Wrapping Math...
-      (loop while (> new-pitch 11) do (decf new-pitch 12) (incf new-octave))
-      (loop while (< new-pitch 0) do (incf new-pitch 12) (decf new-octave))
-      
-      ;; --- THE UNIFIED CONCEPT MATH ---
-      (let* ((written-rhythm (rtm rval))
-             ;; If staccato is active, cut the physics audio duration in half!
-             (physics-dur (if (eq *current-articulation* :staccato)
-                              (* written-rhythm 0.5)
-                              written-rhythm))
-             
-             (new-event (list :type :note
-                              :instr instr
-                              :time (current-time)
-                              :dur physics-dur          ;; For Csound
-                              :written-dur written-rhythm ;; For LilyPond
-                              :pitch new-pitch
-                              :octave new-octave
-                              :pch (+ new-octave 4 (/ new-pitch 100.0))
-                              :vel *velocity*
-                              :art *current-articulation*))) ;; Tag the metadata!
-        (push new-event *score*)))))
+      (let ((new-pitch transposed-pitch)
+            (new-octave octave))
+
+        ;; Octave Wrapping Math...
+        (loop while (> new-pitch 11) do (decf new-pitch 12) (incf new-octave))
+        (loop while (< new-pitch 0) do (incf new-pitch 12) (decf new-octave))
+        
+        ;; --- THE UNIFIED CONCEPT MATH ---
+        (let* ((written-rhythm (rtm rval))
+               (physics-dur (if (eq *current-articulation* :staccato)
+                                (* written-rhythm 0.5)
+                                written-rhythm))
+               
+               (new-event (list :type :note
+                                :instr instr
+                                :time (current-time)
+                                :dur physics-dur          
+                                :written-dur written-rhythm 
+                                :pitch new-pitch
+                                :octave new-octave
+                                :pch (+ new-octave 4 (/ new-pitch 100.0))
+                                :vel *velocity*
+                                :art *current-articulation*))) 
+          (push new-event *score*))))))
 
 (defun seq (rval &rest notes)
   "Sequential player. Handles both (seq h c4 e4) and (seq h my-arp-list)."
