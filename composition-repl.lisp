@@ -3,9 +3,18 @@
 (defparameter *allowed-commands* '(quantize def vars seq play rpt rst save help i reset poly sarp del bpm where bogu-load cell fluid transpose free staccato vol synth stop reverb reboot walk seek sync bang live-loop stop-loop engrave retro invert key sweep pan wait))
 
 (defun execute-ast (ast)
-  "Walks the Abstract Syntax Tree and executes each command node in sequence."
-  (dolist (node ast)
-    (execute-node node)))
+  (when ast
+    (cond
+      ((and (listp ast) (member '& ast))
+       (dolist (chunk (split-by-amp ast))
+         (execute-ast chunk)))
+
+      ((listp (car ast))
+       (dolist (node ast) 
+         (execute-ast node))) 
+
+      (t 
+       (execute-node ast)))))
 
 (defun execute-node (node)
   "Phase 3: The Engine. Evaluates a single cleanly-parsed AST node."
@@ -383,7 +392,11 @@
                               collect (if (numberp arg) arg `(quote ,arg))))))
        t)
 
-      (t (format t "~%[Syntax Warning] Unknown command: ~A~%" cmd) nil))))
+      ;; THE FIX: If it's not a native command, check if it's a Bogu Variable!
+      (t (let ((val (gethash cmd *variables*)))
+           (if val
+               (execute-ast val)
+               (format t "~%[Compiler Error] Unknown command or variable: ~A~%" cmd)))))))
 
 (defun read-bogu-input ()
   "Reads input from the REPL, applies SMART ASI, and ignores comments."

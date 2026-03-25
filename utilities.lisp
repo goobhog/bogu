@@ -6,6 +6,17 @@
         ((atom l) (list l))
         (t (loop for a in l appending (flatten a)))))
 
+(defun split-by-amp (lst)
+  "Slices a flat list into sub-lists wherever an & symbol appears."
+  (let ((chunks nil) (current nil))
+    (dolist (item lst)
+      (if (eq item '&)
+          (progn (when current (push (reverse current) chunks))
+                 (setf current nil))
+          (push item current)))
+    (when current (push (reverse current) chunks))
+    (reverse chunks)))
+
 (defun stringem (&rest items)
   "Adjoins items as one lowercase string."
   (string-downcase (format nil "~{~a~^~}" items)))
