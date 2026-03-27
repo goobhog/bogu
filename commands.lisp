@@ -220,13 +220,13 @@
          (offset (if (numberp (car expanded)) (car expanded) (parse-integer (string (car expanded)))))
          (trk (get-current-track))
          (old-offset (track-transpose-offset trk)))
-    ;; Mutate the track's state
+    ;; Explicitly mutate the TRACK state!
     (setf (track-transpose-offset trk) (+ old-offset offset))
-    ;; Execute the block, then safely unwind the mutation
     (unwind-protect
         (if (and (listp (cdr expanded)) (listp (cadr expanded)))
             (execute-ast (cdr expanded)) 
             (execute-node (cdr expanded)))
+      ;; Safely revert the track state when the block is done
       (setf (track-transpose-offset trk) old-offset))))
 
 ;; --- SYSTEM & LIVE LOOPS ---
@@ -257,7 +257,7 @@
                        
                        ;; Fresh tracks and score for each iteration!
                        (let ((*score* '())
-                             (*tracks* (make-hash-table))
+                             (*tracks* (clone-tracks-for-sandbox))
                              (*current-instrument* 1))
                          
                          (execute-ast current-block)
@@ -308,7 +308,7 @@
          (start-time (current-time)))
          
     (let ((*score* '())
-          (*tracks* (make-hash-table)))
+          (*tracks* (clone-tracks-for-sandbox)))
       (set-current-time 0.0)
       
       (cond
@@ -333,7 +333,7 @@
          
     ;; 1. The Sandbox Capture
     (let ((*score* '())
-          (*tracks* (make-hash-table)))
+          (*tracks* (clone-tracks-for-sandbox)))
       (set-current-time 0.0)
       
       (cond
@@ -407,6 +407,20 @@
   (or (gethash *current-instrument* *tracks*)
       (setf (gethash *current-instrument* *tracks*) 
             (make-track :id *current-instrument*))))
+
+(defun clone-tracks-for-sandbox ()
+  "Creates a perfect copy of all track states (keys, velocities) but resets their playheads to 0.0 for isolated loop generation."
+  (let ((new-ht (make-hash-table)))
+    (maphash (lambda (k v)
+               (setf (gethash k new-ht)
+                     (make-track :id (track-id v)
+                                 :playhead 0.0  ;; Safely zeroed out for the sandbox timeline!
+                                 :transpose-offset (track-transpose-offset v)
+                                 :velocity (track-velocity v)
+                                 :articulation (track-articulation v)
+                                 :key (track-key v))))
+             *tracks*)
+    new-ht))
 
 (defun current-time ()
   "Returns the current playhead position for the active instrument."
@@ -524,40 +538,51 @@
   (push n *bpm*))
 
 (defun schedule-note (pitch-in octave rval &optional instr-override)
-  "Armor-Plated: Handles pitch, DIATONIC transposition, and articulation metadata via Track state."
+  "Armor-Plated: Handles pitch, DIATONIC transposition, and articulation via Track State."
   (let* ((pitch (if (numberp pitch-in) pitch-in (cdr (assoc pitch-in *notes*))))
          (instr (or instr-override *current-instrument*))
          (trk (get-current-track))
          (trk-key (track-key trk))
          (trk-transpose (track-transpose-offset trk))
-         (trk-articulation (track-articulation trk))
-         (trk-velocity (track-velocity trk)))
+         (trk-velocity (track-velocity trk))
+         (trk-art (track-articulation trk)))
     
-    (unless pitch 
-      (error "Music Math Error: The pitch '~A' is not defined in the *notes* dictionary." pitch-in))
+    (unless pitch (error "Music Math Error: The pitch '~A' is not defined in the *notes* dictionary." pitch-in))
 
     ;; --- THE DIATONIC ENGINE ---
     (let ((transposed-pitch
            (if (or (null trk-key) (= trk-transpose 0))
-               (+ pitch trk-transpose)
-               (let* ((root-sym (car trk-key))
-                      (scale-sym (cadr trk-key))
-                      (root-pitch (cdr (assoc root-sym *notes*)))
-                      (intervals (cdr (assoc scale-sym *scale-intervals*))))
+               (+ pitch trk-transpose) ;; Chromatic Fallback
+               ;; FUZZY FIND: Ignore Lisp package and case differences completely
+               (let* ((root-str (string (car trk-key)))
+                      (scale-str (string (cadr trk-key)))
+                      (root-assoc (find-if (lambda (x) (string-equal (string (car x)) root-str)) *notes*))
+                      (intervals-assoc (find-if (lambda (x) (string-equal (string (car x)) scale-str)) *scale-intervals*)))
                  
-                 (if (not intervals)
-                     (+ pitch trk-transpose) 
-                     (let* ((scale-pitches (mapcar (lambda (x) (+ root-pitch x)) intervals))
-                            (normalized-pitch (mod pitch 12))
+                 (if (or (not root-assoc) (not intervals-assoc))
+                     (+ pitch trk-transpose) ;; Dictionary miss fallback
+                     (let* ((root-pitch (round (cdr root-assoc)))
+                            (intervals (cdr intervals-assoc))
+                            ;; Create absolute scale steps
+                            (scale-pitches (mapcar (lambda (x) (+ root-pitch x)) intervals))
+                            (normalized-pitch (mod (round pitch) 12))
+                            ;; Find index matching the pitch class
                             (degree (position normalized-pitch scale-pitches :key (lambda (x) (mod x 12)))))
                        
                        (if (null degree)
-                           (+ pitch trk-transpose) 
+                           (+ pitch trk-transpose) ;; Fallback if note isn't in scale
+                           ;; DIATONIC DELTA MATH
                            (let* ((new-degree (+ degree trk-transpose))
                                   (octave-shift (floor new-degree (length scale-pitches)))
                                   (wrapped-degree (mod new-degree (length scale-pitches)))
-                                  (new-absolute-pitch (nth wrapped-degree scale-pitches)))
-                             (+ new-absolute-pitch (* octave-shift 12))))))))))
+                                  
+                                  (original-absolute (nth degree scale-pitches))
+                                  (new-absolute (nth wrapped-degree scale-pitches))
+                                  (total-new-absolute (+ new-absolute (* octave-shift 12)))
+                                  
+                                  (delta (- total-new-absolute original-absolute)))
+                             ;; Apply precise semitone delta
+                             (+ pitch delta)))))))))
 
       (let ((new-pitch transposed-pitch)
             (new-octave octave))
@@ -566,9 +591,7 @@
         (loop while (< new-pitch 0) do (incf new-pitch 12) (decf new-octave))
         
         (let* ((written-rhythm (rtm rval))
-               (physics-dur (if (eq trk-articulation :staccato)
-                                (* written-rhythm 0.5)
-                                written-rhythm))
+               (physics-dur (if (eq trk-art :staccato) (* written-rhythm 0.5) written-rhythm))
                
                (new-event (list :type :note
                                 :instr instr
@@ -579,6 +602,5 @@
                                 :octave new-octave
                                 :pch (+ new-octave 4 (/ new-pitch 100.0))
                                 :vel trk-velocity
-                                :art trk-articulation))) 
+                                :art trk-art))) 
           (push new-event *score*))))))
-
