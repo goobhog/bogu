@@ -16,7 +16,8 @@
 
 ;; 2. Define the strict dependency order
 (defparameter *bogu-build-order*
-  '("utilities.lisp"
+  '("globals.lisp"
+    "utilities.lisp"
     "audio-pipe.lisp"   ;; <-- The new bridge!
     "parser.lisp"
     "music-math.lisp"
