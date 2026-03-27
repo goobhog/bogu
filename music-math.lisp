@@ -60,3 +60,18 @@
 	((eq 'sq rval) (/ 1 5.0))
 	((eq 'tq rval) (/ 0.5 5.0))
 	((eq 'hq rval) (/ 8.0 5.0))))
+
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro generate-notes (pitches octaves)
+    "Automatically generates bogu note functions (e.g., C4, EB3). Aligned with new scheduler!"
+    `(progn
+       ,@(loop for pitch in pitches
+               append (loop for octave in octaves
+                            for func-name = (intern (string-upcase (format nil "~a~a" pitch octave)))
+                            collect `(defun ,func-name (rval)
+                                       ;; The Correct Order: Pitch, Octave, Rhythm
+                                       (schedule-note ',pitch ,octave rval)))))))
+
+(generate-notes (a a# bb b cb b# c c# db d d# eb e fb e# f f# gb g g# ab)
+                (0 1 2 3 4 5 6 7 8))

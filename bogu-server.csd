@@ -16,8 +16,10 @@ gieng fluidEngine
 gisf fluidLoad "orchestra.sf2", gieng, 1
 
 instr 1
+
 icps = cpspch(p4)
 iamp = p5 * 0.15
+
 Svol sprintf "vol_%d", int(p1)
 Span sprintf "pan_%d", int(p1)
 Srvb sprintf "rvb_%d", int(p1)
@@ -33,10 +35,12 @@ kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
 kflt_sm portk kflt, 0.05
 
+asig_raw vco2 iamp, icps, 0  
+
 kcutoff = cpsoct((kflt_sm * 10) + 4)
-asig vco2 iamp, icps, 0
-afilt moogladder asig, kcutoff, 0.25
-ares linen afilt, .03, p3, .05
+asig moogladder asig_raw, kcutoff, 0.25  
+
+ares linen asig, 0.03, p3, 0.05
 
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
@@ -46,8 +50,10 @@ vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 2
+
 icps = cpspch(p4)
 iamp = p5 * 0.15
+
 Svol sprintf "vol_%d", int(p1)
 Span sprintf "pan_%d", int(p1)
 Srvb sprintf "rvb_%d", int(p1)
@@ -63,10 +69,12 @@ kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
 kflt_sm portk kflt, 0.05
 
+asig_raw pluck iamp, icps, icps, 2, 1  
+
 kcutoff = cpsoct((kflt_sm * 10) + 4)
-asig pluck iamp, icps, icps, 2, 1
-afilt moogladder asig, kcutoff, 0.1
-ares linen afilt, .01, p3, .1
+asig moogladder asig_raw, kcutoff, 0.25  
+
+ares linen asig, 0.01, p3, 0.1
 
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
@@ -76,23 +84,31 @@ vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 3
+
 icps = cpspch(p4)
 iamp = p5 * 0.15
+
 Svol sprintf "vol_%d", int(p1)
 Span sprintf "pan_%d", int(p1)
 Srvb sprintf "rvb_%d", int(p1)
+Sflt sprintf "flt_%d", int(p1)
 
 kvol chnget Svol
 kpan chnget Span
 krvb chnget Srvb
+kflt chnget Sflt
 
-;; THE FIX: Removed initial values so it glides softly from zero!
 kvol_sm portk kvol, 0.05
 kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
+kflt_sm portk kflt, 0.05
 
-asig poscil iamp, icps, 2
-ares linen asig, .03, p3, .05
+asig_raw poscil iamp, icps, 2  
+
+asig = asig_raw  
+
+ares linen asig, 0.03, p3, 0.05
+
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
 vincr ga_master_R, aR
@@ -101,23 +117,31 @@ vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 4
+
 icps = cpspch(p4)
 iamp = p5 * 0.15
+
 Svol sprintf "vol_%d", int(p1)
 Span sprintf "pan_%d", int(p1)
 Srvb sprintf "rvb_%d", int(p1)
+Sflt sprintf "flt_%d", int(p1)
 
 kvol chnget Svol
 kpan chnget Span
 krvb chnget Srvb
+kflt chnget Sflt
 
-;; THE FIX: Removed initial values so it glides softly from zero!
 kvol_sm portk kvol, 0.05
 kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
+kflt_sm portk kflt, 0.05
 
-asig poscil iamp, icps, 2
-ares linen asig, .03, p3, .05
+asig_raw poscil iamp, icps, 2  
+
+asig = asig_raw  
+
+ares linen asig, 0.03, p3, 0.05
+
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
 vincr ga_master_R, aR
@@ -126,23 +150,31 @@ vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 5
+
 icps = cpspch(p4)
 iamp = p5 * 0.15
+
 Svol sprintf "vol_%d", int(p1)
 Span sprintf "pan_%d", int(p1)
 Srvb sprintf "rvb_%d", int(p1)
+Sflt sprintf "flt_%d", int(p1)
 
 kvol chnget Svol
 kpan chnget Span
 krvb chnget Srvb
+kflt chnget Sflt
 
-;; THE FIX: Removed initial values so it glides softly from zero!
 kvol_sm portk kvol, 0.05
 kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
+kflt_sm portk kflt, 0.05
 
-asig poscil iamp, icps, 2
-ares linen asig, .03, p3, .05
+asig_raw poscil iamp, icps, 2  
+
+asig = asig_raw  
+
+ares linen asig, 0.03, p3, 0.05
+
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
 vincr ga_master_R, aR
@@ -151,23 +183,31 @@ vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 6
+
 icps = cpspch(p4)
 iamp = p5 * 0.15
+
 Svol sprintf "vol_%d", int(p1)
 Span sprintf "pan_%d", int(p1)
 Srvb sprintf "rvb_%d", int(p1)
+Sflt sprintf "flt_%d", int(p1)
 
 kvol chnget Svol
 kpan chnget Span
 krvb chnget Srvb
+kflt chnget Sflt
 
-;; THE FIX: Removed initial values so it glides softly from zero!
 kvol_sm portk kvol, 0.05
 kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
+kflt_sm portk kflt, 0.05
 
-asig poscil iamp, icps, 2
-ares linen asig, .03, p3, .05
+asig_raw poscil iamp, icps, 2  
+
+asig = asig_raw  
+
+ares linen asig, 0.03, p3, 0.05
+
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
 vincr ga_master_R, aR
@@ -176,23 +216,31 @@ vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 7
+
 icps = cpspch(p4)
 iamp = p5 * 0.15
+
 Svol sprintf "vol_%d", int(p1)
 Span sprintf "pan_%d", int(p1)
 Srvb sprintf "rvb_%d", int(p1)
+Sflt sprintf "flt_%d", int(p1)
 
 kvol chnget Svol
 kpan chnget Span
 krvb chnget Srvb
+kflt chnget Sflt
 
-;; THE FIX: Removed initial values so it glides softly from zero!
 kvol_sm portk kvol, 0.05
 kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
+kflt_sm portk kflt, 0.05
 
-asig poscil iamp, icps, 2
-ares linen asig, .03, p3, .05
+asig_raw poscil iamp, icps, 2  
+
+asig = asig_raw  
+
+ares linen asig, 0.03, p3, 0.05
+
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
 vincr ga_master_R, aR
@@ -201,23 +249,31 @@ vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 8
+
 icps = cpspch(p4)
 iamp = p5 * 0.15
+
 Svol sprintf "vol_%d", int(p1)
 Span sprintf "pan_%d", int(p1)
 Srvb sprintf "rvb_%d", int(p1)
+Sflt sprintf "flt_%d", int(p1)
 
 kvol chnget Svol
 kpan chnget Span
 krvb chnget Srvb
+kflt chnget Sflt
 
-;; THE FIX: Removed initial values so it glides softly from zero!
 kvol_sm portk kvol, 0.05
 kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
+kflt_sm portk kflt, 0.05
 
-asig poscil iamp, icps, 2
-ares linen asig, .03, p3, .05
+asig_raw poscil iamp, icps, 2  
+
+asig = asig_raw  
+
+ares linen asig, 0.03, p3, 0.05
+
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
 vincr ga_master_R, aR
@@ -226,23 +282,31 @@ vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 9
+
 icps = cpspch(p4)
 iamp = p5 * 0.15
+
 Svol sprintf "vol_%d", int(p1)
 Span sprintf "pan_%d", int(p1)
 Srvb sprintf "rvb_%d", int(p1)
+Sflt sprintf "flt_%d", int(p1)
 
 kvol chnget Svol
 kpan chnget Span
 krvb chnget Srvb
+kflt chnget Sflt
 
-;; THE FIX: Removed initial values so it glides softly from zero!
 kvol_sm portk kvol, 0.05
 kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
+kflt_sm portk kflt, 0.05
 
-asig poscil iamp, icps, 2
-ares linen asig, .03, p3, .05
+asig_raw poscil iamp, icps, 2  
+
+asig = asig_raw  
+
+ares linen asig, 0.03, p3, 0.05
+
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
 vincr ga_master_R, aR
@@ -251,23 +315,31 @@ vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 10
+
 icps = cpspch(p4)
 iamp = p5 * 0.15
+
 Svol sprintf "vol_%d", int(p1)
 Span sprintf "pan_%d", int(p1)
 Srvb sprintf "rvb_%d", int(p1)
+Sflt sprintf "flt_%d", int(p1)
 
 kvol chnget Svol
 kpan chnget Span
 krvb chnget Srvb
+kflt chnget Sflt
 
-;; THE FIX: Removed initial values so it glides softly from zero!
 kvol_sm portk kvol, 0.05
 kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
+kflt_sm portk kflt, 0.05
 
-asig poscil iamp, icps, 2
-ares linen asig, .03, p3, .05
+asig_raw poscil iamp, icps, 2  
+
+asig = asig_raw  
+
+ares linen asig, 0.03, p3, 0.05
+
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
 vincr ga_master_R, aR
@@ -276,23 +348,31 @@ vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 11
+
 icps = cpspch(p4)
 iamp = p5 * 0.15
+
 Svol sprintf "vol_%d", int(p1)
 Span sprintf "pan_%d", int(p1)
 Srvb sprintf "rvb_%d", int(p1)
+Sflt sprintf "flt_%d", int(p1)
 
 kvol chnget Svol
 kpan chnget Span
 krvb chnget Srvb
+kflt chnget Sflt
 
-;; THE FIX: Removed initial values so it glides softly from zero!
 kvol_sm portk kvol, 0.05
 kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
+kflt_sm portk kflt, 0.05
 
-asig poscil iamp, icps, 2
-ares linen asig, .03, p3, .05
+asig_raw poscil iamp, icps, 2  
+
+asig = asig_raw  
+
+ares linen asig, 0.03, p3, 0.05
+
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
 vincr ga_master_R, aR
@@ -301,23 +381,31 @@ vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 12
+
 icps = cpspch(p4)
 iamp = p5 * 0.15
+
 Svol sprintf "vol_%d", int(p1)
 Span sprintf "pan_%d", int(p1)
 Srvb sprintf "rvb_%d", int(p1)
+Sflt sprintf "flt_%d", int(p1)
 
 kvol chnget Svol
 kpan chnget Span
 krvb chnget Srvb
+kflt chnget Sflt
 
-;; THE FIX: Removed initial values so it glides softly from zero!
 kvol_sm portk kvol, 0.05
 kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
+kflt_sm portk kflt, 0.05
 
-asig poscil iamp, icps, 2
-ares linen asig, .03, p3, .05
+asig_raw poscil iamp, icps, 2  
+
+asig = asig_raw  
+
+ares linen asig, 0.03, p3, 0.05
+
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
 vincr ga_master_R, aR
@@ -326,23 +414,31 @@ vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 13
+
 icps = cpspch(p4)
 iamp = p5 * 0.15
+
 Svol sprintf "vol_%d", int(p1)
 Span sprintf "pan_%d", int(p1)
 Srvb sprintf "rvb_%d", int(p1)
+Sflt sprintf "flt_%d", int(p1)
 
 kvol chnget Svol
 kpan chnget Span
 krvb chnget Srvb
+kflt chnget Sflt
 
-;; THE FIX: Removed initial values so it glides softly from zero!
 kvol_sm portk kvol, 0.05
 kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
+kflt_sm portk kflt, 0.05
 
-asig poscil iamp, icps, 2
-ares linen asig, .03, p3, .05
+asig_raw poscil iamp, icps, 2  
+
+asig = asig_raw  
+
+ares linen asig, 0.03, p3, 0.05
+
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
 vincr ga_master_R, aR
@@ -351,23 +447,31 @@ vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 14
+
 icps = cpspch(p4)
 iamp = p5 * 0.15
+
 Svol sprintf "vol_%d", int(p1)
 Span sprintf "pan_%d", int(p1)
 Srvb sprintf "rvb_%d", int(p1)
+Sflt sprintf "flt_%d", int(p1)
 
 kvol chnget Svol
 kpan chnget Span
 krvb chnget Srvb
+kflt chnget Sflt
 
-;; THE FIX: Removed initial values so it glides softly from zero!
 kvol_sm portk kvol, 0.05
 kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
+kflt_sm portk kflt, 0.05
 
-asig poscil iamp, icps, 2
-ares linen asig, .03, p3, .05
+asig_raw poscil iamp, icps, 2  
+
+asig = asig_raw  
+
+ares linen asig, 0.03, p3, 0.05
+
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
 vincr ga_master_R, aR
@@ -376,23 +480,31 @@ vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 15
+
 icps = cpspch(p4)
 iamp = p5 * 0.15
+
 Svol sprintf "vol_%d", int(p1)
 Span sprintf "pan_%d", int(p1)
 Srvb sprintf "rvb_%d", int(p1)
+Sflt sprintf "flt_%d", int(p1)
 
 kvol chnget Svol
 kpan chnget Span
 krvb chnget Srvb
+kflt chnget Sflt
 
-;; THE FIX: Removed initial values so it glides softly from zero!
 kvol_sm portk kvol, 0.05
 kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
+kflt_sm portk kflt, 0.05
 
-asig poscil iamp, icps, 2
-ares linen asig, .03, p3, .05
+asig_raw poscil iamp, icps, 2  
+
+asig = asig_raw  
+
+ares linen asig, 0.03, p3, 0.05
+
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
 vincr ga_master_R, aR
@@ -401,23 +513,31 @@ vincr ga_rvb_R, aR * krvb_sm
 endin
 
 instr 16
+
 icps = cpspch(p4)
 iamp = p5 * 0.15
+
 Svol sprintf "vol_%d", int(p1)
 Span sprintf "pan_%d", int(p1)
 Srvb sprintf "rvb_%d", int(p1)
+Sflt sprintf "flt_%d", int(p1)
 
 kvol chnget Svol
 kpan chnget Span
 krvb chnget Srvb
+kflt chnget Sflt
 
-;; THE FIX: Removed initial values so it glides softly from zero!
 kvol_sm portk kvol, 0.05
 kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
+kflt_sm portk kflt, 0.05
 
-asig poscil iamp, icps, 2
-ares linen asig, .03, p3, .05
+asig_raw poscil iamp, icps, 2  
+
+asig = asig_raw  
+
+ares linen asig, 0.03, p3, 0.05
+
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
 vincr ga_master_R, aR

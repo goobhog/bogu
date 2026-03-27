@@ -9,7 +9,7 @@
 ;; --- 2. THE COMPOSITION MATRIX ---
 (defparameter *score* '())
 (defparameter *bogu-code* '())
-(defparameter *playheads* (make-hash-table))
+;;(defparameter *playheads* (make-hash-table))
 (defparameter *current-instrument* 1)
 (defparameter *current-key* nil)
 (defparameter *current-articulation* nil)
