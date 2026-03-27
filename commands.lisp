@@ -37,14 +37,18 @@
          (s (rtm (cadr expanded)))
          (notes (cddr expanded))
          (len (length notes))
-         (start-time (current-time))
-         (num-steps (floor (/ s r))))
-    (dotimes (i num-steps)
+         (start-time (current-time)))
+         
+    ;; THE FIX: Iterate exactly 'len' times. No more automatic wrap-around/looping!
+    (dotimes (i len)
       (set-current-time (+ start-time (* r i)))
-      (let ((n (nth (mod i len) notes)))
+      (let ((n (nth i notes)))
         (unless (or (eq n 'R) (eq n 'RST))
           (if (and (symbolp n) (fboundp n))
+              ;; Physics duration: calculating the remaining time until 's' is reached
               (funcall (symbol-function n) (max 0.1 (+ 0.5 (- s (* r i)))))))))
+              
+    ;; Safely advance the playhead to the end of the total specified span
     (set-current-time (+ start-time s))))
 
 (def-bogu-cmd FLUID (args)

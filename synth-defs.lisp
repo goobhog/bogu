@@ -69,7 +69,8 @@ asig moogladder asig_raw, kcutoff, 0.25"
     chnset 1, S_init
   endif
 
-  imidinn = (octpch(p4) - 3) * 12
+  ;; FIX 1: Force rounding to prevent float-truncation from flattening notes!
+  imidinn = round((octpch(p4) - 3) * 12)
   ivel = p5 * 127
 
   Svol sprintf \"vol_%d\", int(p1)
@@ -79,9 +80,20 @@ asig moogladder asig_raw, kcutoff, 0.25"
   kpan chnget Span
   krvb chnget Srvb
   
-  fluidCCk gieng, i_chan, 7, int(kvol * 127)
-  fluidCCk gieng, i_chan, 10, int(kpan * 127)
-  fluidCCk gieng, i_chan, 91, int(krvb * 127)
+  ;; FIX 2: Only send CCs if they change. Prevents engine choking during polyphony.
+  kvol_cc = int(kvol * 127)
+  kpan_cc = int(kpan * 127)
+  krvb_cc = int(krvb * 127)
+
+  if changed(kvol_cc) == 1 then
+    fluidCCk gieng, i_chan, 7, kvol_cc
+  endif
+  if changed(kpan_cc) == 1 then
+    fluidCCk gieng, i_chan, 10, kpan_cc
+  endif
+  if changed(krvb_cc) == 1 then
+    fluidCCk gieng, i_chan, 91, krvb_cc
+  endif
 
   fluidNote gieng, i_chan, imidinn, ivel
   " program-number))
