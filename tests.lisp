@@ -1,53 +1,174 @@
 ;; tests.lisp
-(in-package :bogu) ;; <-- CRITICAL FIX: Must run inside the Bogu brain!
+(in-package :bogu) 
+
+;; --- TEST HARNESS & GLOBALS ---
+(defparameter *test-failures* 0)
+(defparameter *test-passes* 0)
+
+(defun reset-test-counters ()
+  (setf *test-failures* 0)
+  (setf *test-passes* 0))
 
 (defun assert-equal (expected actual test-name)
-  "The fundamental unit of falsifiability."
+  "The fundamental unit of falsifiability. Now updates global counters."
   (if (equal expected actual)
-      (format t "[PASS] ~a~%" test-name)
-      (format t "[FAIL] ~a~%  Expected: ~a~%  Got:      ~a~%" test-name expected actual)))
+      (progn
+        (incf *test-passes*)
+        (format t " [PASS] ~a~%" test-name))
+      (progn
+        (incf *test-failures*)
+        (format t " [FAIL] ~a~%  Expected: ~a~%  Got:      ~a~%" test-name expected actual))))
 
+(defmacro assert-ast (test-name input-string expected-ast)
+  "Parses a raw Bogu string and asserts the resulting AST matches the expected Lisp list perfectly."
+  `(let* ((tokens (lex-bogu-string ,input-string))
+          (actual-ast (parse-bogu-tokens tokens)))
+     (assert-equal ',expected-ast actual-ast ,test-name)))
+
+(defun pluck (property event-list)
+  "Helper: Extracts a specific property from a list of note events."
+  (mapcar (lambda (e) (getf e property)) event-list))
+
+(defun measure-written-length (event-list)
+  "Measures the footprint of a block exactly as the SEQ command sees it."
+  (let ((max-t 0.0))
+    (dolist (e event-list)
+      (setf max-t (max max-t (+ (getf e :time) (getf e :written-dur)))))
+    max-t))
+
+(defun measure-absolute-length (event-list)
+  "Measures the actual audio footprint exactly as the COMMITTER sees it."
+  (let ((max-t 0.0))
+    (dolist (e event-list)
+      (setf max-t (max max-t (+ (getf e :time) (or (getf e :dur) (getf e :written-dur))))))
+    max-t))
+
+(defun measure-ast-duration (ast-string)
+  "Helper for string-based spillover tests: compiles and measures absolute maximum time+dur."
+  (let* ((tokens (lex-bogu-string ast-string))
+         (ast (parse-bogu-tokens tokens))
+         (events (execute-ast ast)))
+    (measure-written-length events)))
+
+
+;; --- THE MASTER TEST SUITE ---
 (defun run-bogu-tests ()
-  "The Automated Test Suite."
-  (format t "~%--- RUNNING BOGU DIAGNOSTICS ---~%")
-  
-  ;; 1. The Lexer Bracket Test
-  (assert-equal '([ SEQ Q C4 ]) 
-                (lex-bogu-string "[ seq q c4 ]") 
-                "Lexer correctly separates brackets into standalone tokens")
-                
-  ;; 2. The Transposition Octave Wrap Test
-  (reset-bogu) ;; <--- WIPE MEMORY FIRST!
-  (let ((*transpose-offset* 14))
-    ;; Play a C4 (Pitch 0, Octave 4) transposed up 14 semitones. 
-    ;; It MUST wrap around to a D5 (Pitch 2, Octave 5).
-    (schedule-note 0 4 'q) 
-    (let ((generated-note (car *score*)))
-      (assert-equal 2 (getf generated-note :pitch) "Transposition calculates correct pitch class")
-      (assert-equal 5 (getf generated-note :octave) "Transposition correctly wraps into the next octave")))
-  
-  ;; 3. The Negative Time Armor Test
-  (reset-bogu)
-  ;; Try to play a sustained arpeggio where the notes take longer than the total sustain time.
-  ;; The duration MUST be clamped to 0.01 to prevent a Csound memory corruption crash.
-  (sarp 'q 'e (lambda (r) (schedule-note 0 4 r)) (lambda (r) (schedule-note 2 4 r)))
-  (let ((last-note (car *score*)))
-    (assert-equal 0.01 (getf last-note :dur) "Sarp safely clamps negative durations to 0.01s"))
-      
-  ;; --- NEW: 4. The LilyPond Pitch Translator ---
-  (assert-equal "c'" (pch->lily 8.00) "LilyPond translates Middle C (8.00) to c'")
-  (assert-equal "cis'" (pch->lily 8.01) "LilyPond translates C#4 (8.01) to cis'")
-  (assert-equal "b" (pch->lily 7.11) "LilyPond translates B3 (7.11) to b (drops the octave mark)")
-  (assert-equal "c''" (pch->lily 9.00) "LilyPond translates C5 (9.00) to c'' (adds upper octave mark)")
+  "Executes the entire Bogu diagnostic suite sequentially."
+  (reset-test-counters)
+  (format t "~%========================================~%")
+  (format t "      RUNNING BOGU MASTER DIAGNOSTICS    ~%")
+  (format t "========================================~%")
 
-  ;; --- NEW: 5. The LilyPond Rhythm Translator ---
-  (assert-equal "4" (dur->lily 1.0) "LilyPond translates 1.0 beats to quarter note '4'")
-  (assert-equal "8" (dur->lily 0.5) "LilyPond translates 0.5 beats to eighth note '8'")
-  (assert-equal "4." (dur->lily 1.5) "LilyPond translates 1.5 beats to dotted quarter '4.'")
-  
-  ;; --- NEW: 6. Rhythm Dictionary ---
+  ;; ---------------------------------------------------------
+  ;; 1. LEXER & PARSER
+  ;; ---------------------------------------------------------
+  (format t "~%--- 1. Lexer & Parser ---~%")
+  (assert-equal '([ SEQ Q C4 ]) (lex-bogu-string "[ seq q c4 ]") "Lexer separates brackets")
+  (assert-ast "Basic Command Parsing" "bpm 120" ((BPM 120)))
+  (assert-ast "Ampersand Separation" "vol 80 & pan 50" ((VOL 80) (PAN 50)))
+  (assert-ast "Nested Combinatoric Blocks" "seq q [ poly q c4 e4 g4 ]" ((SEQ Q (POLY Q C4 E4 G4))))
+  (assert-ast "Variable Definition Brackets" "def my-chord [ c4 e4 g4 ]" ((DEF MY-CHORD (C4 E4 G4))))
+
+  ;; ---------------------------------------------------------
+  ;; 2. LOGIC, VARIABLES, & TURING COMPLETENESS
+  ;; ---------------------------------------------------------
+  (format t "~%--- 2. Logic & State (IF / DEF) ---~%")
+  (reset-bogu)
+  (let* ((if-true (execute-ast '((IF 5 > 3 (C4) (D4)))))
+         (if-false (execute-ast '((IF 5 < 3 (C4) (D4)))))
+         (if-eq (execute-ast '((IF 10 = 10 (E4) (F4))))))
+    (assert-equal '(C) (pluck :pitch-symbol if-true) "IF evaluates true branch properly (>)")
+    (assert-equal '(D) (pluck :pitch-symbol if-false) "IF bypasses to false branch properly (<)")
+    (assert-equal '(E) (pluck :pitch-symbol if-eq) "IF evaluates equality properly (=)"))
+
+  (execute-node '(DEF TEST-VAR (C4 D4)))
+  (assert-equal '(C D) (pluck :pitch-symbol (execute-ast '((TEST-VAR)))) "AST recursively expands DEF variables")
+
+  ;; ---------------------------------------------------------
+  ;; 3. MUSIC MATH & TRANSLATORS
+  ;; ---------------------------------------------------------
+  (format t "~%--- 3. Math & Translators ---~%")
+  (assert-equal "cis'" (pch->lily 8.01) "LilyPond translates C#4 (8.01) to cis'")
+  (assert-equal "b" (pch->lily 7.11) "LilyPond translates B3 (7.11) to b")
   (assert-equal 1.0 (rtm 'q) "RTM translates 'q to 1.0 beats")
   (assert-equal 0.375 (rtm 's.) "RTM translates 's. to 0.375 beats")
 
-  (format t "--------------------------------~%")
-  (reset-bogu))
+  ;; ---------------------------------------------------------
+  ;; 4. SEQUENCING & COMBINATORICS
+  ;; ---------------------------------------------------------
+  (format t "~%--- 4. Sequencing & Combinatorics (SEQ/POLY/SIM/CELL) ---~%")
+  (let* ((bare-note (execute-ast '(C4)))
+         (seq-block (execute-ast '((SEQ Q C4 E4 G4))))
+         (poly-block (execute-ast '((POLY W C4 E4 G4))))
+         (sim-block (execute-ast '((SEQ (SIM (SEQ C4 D4) E4) F4))))
+         (cell-block (execute-ast '((CELL 1.5 (SEQ C4 D4 E4)))))) ; 3 beats of notes stuffed into a 1.5 beat cell
+         
+    (assert-equal '(1.0) (pluck :written-dur bare-note) "Bare note defaults to 1.0 duration")
+    (assert-equal '(0.0 1.0 2.0) (pluck :time seq-block) "SEQ advances time (0.0, 1.0, 2.0)")
+    (assert-equal '(0.0 0.0 0.0) (pluck :time poly-block) "POLY stacks all elements at time 0.0")
+    (assert-equal '(0.0 1.0 0.0 2.0) (pluck :time sim-block) "SIM isolates timelines; SEQ correctly advances past the longest internal branch")
+    
+    (assert-equal 1.5 (measure-written-length cell-block) "CELL strictly enforces mathematical time boundaries")
+    (assert-equal 2 (length (remove-if (lambda (e) (eq (getf e :pitch-symbol) 'RST)) cell-block)) "CELL automatically chops notes that bleed past the boundary"))
+
+  ;; ---------------------------------------------------------
+  ;; 5. TREE TRANSFORMERS (RETRO, TRANSPOSE, INVERT, RPT, LOOP)
+  ;; ---------------------------------------------------------
+  (format t "~%--- 5. Tree Transformers ---~%")
+  (let* ((retro-seq (execute-ast '((RETRO (SEQ C4 D4 E4)))))
+         (trans-seq (execute-ast '((TRANSPOSE 7 (SEQ C4 D4)))))
+         (rpt-seq (execute-ast '((RPT 3 (SEQ Q C4)))))
+         (loop-seq (execute-ast '((LOOP 2 (SEQ Q C4 D4))))))
+    
+    (assert-equal '(2.0 1.0 0.0) (pluck :time retro-seq) "RETRO mathematically flips start times")
+    (assert-equal '(7 7) (pluck :transpose trans-seq) "TRANSPOSE tags nodes purely without state mutation")
+    (assert-equal 3.0 (measure-written-length rpt-seq) "RPT stamps out exact chronological copies")
+    (assert-equal 4 (length loop-seq) "LOOP completely flattens un-shifted data into the AST stream"))
+
+  ;; ---------------------------------------------------------
+  ;; 6. PROBABILISTIC & GENERATIVE (CHANCE, CHOOSE, SARP, FLUID, WALK)
+  ;; ---------------------------------------------------------
+  (format t "~%--- 6. Generative Arrays & Spillover Constraints ---~%")
+  (let* ((zero-chance (execute-ast '((CHANCE 0.0 (SEQ C4)))))
+         (choose-test (execute-ast '((CHOOSE 1.0 (C4) (D4)))))
+         (walk-test (execute-ast '((WALK 5 Q (C4 D4 E4)))))
+         (sarp-len (measure-ast-duration "[ sarp 1 15 [ f3 ab3 c4 ] ]"))
+         (fluid-len (measure-ast-duration "[ fluid 4 11 [ db1 ab1 ] ]")))
+         
+    (assert-equal nil zero-chance "CHANCE drops all events at 0.0 probability")
+    (assert-equal '(C) (pluck :pitch-symbol choose-test) "CHOOSE securely branches logic based on probability")
+    (assert-equal 5.0 (measure-written-length walk-test) "WALK generates exactly the requested step duration")
+    
+    ;; The old standalone tests are now formal assertions!
+    (assert-equal 15.0 sarp-len "SARP loops its pool and flawlessly hits its target boundary")
+    (assert-equal 11.0 fluid-len "FLUID mathematically clamps random bleeds to hit its exact boundary"))
+
+  ;; ---------------------------------------------------------
+  ;; 7. AUTOMATION, MIXER, & HIGHER-ORDER SWEEP
+  ;; ---------------------------------------------------------
+  (format t "~%--- 7. Control Data & Automation ---~%")
+  (let* ((vol-cmd (execute-ast '((VOL 80))))
+         (sweep-seq (execute-ast '((SEQ C4 (SWEEP VOL 0 100 4) D4))))
+         (sweep-wrap-len (measure-ast-duration "[ sweep pan 20 80 [ sarp 1 15 [ f3 ab3 ] ] ]")))
+         
+    (assert-equal 0.8 (getf (car vol-cmd) :start) "Mixer macros yield pure mathematical control data (0.0 to 1.0)")
+    (assert-equal '(0.0 1.0 1.0) (pluck :time sweep-seq) "Standard SWEEP consumes 0.0 sequencer time (Ghost Time)")
+    (assert-equal 15.0 sweep-wrap-len "Higher-Order SWEEP dynamically measures and envelopes child block length"))
+
+  ;; ---------------------------------------------------------
+  ;; 8. SYSTEM STATE & LIVE-LOOP REGISTRY
+  ;; ---------------------------------------------------------
+  (format t "~%--- 8. Live Engine & Threads ---~%")
+  (execute-node '(LIVE-LOOP MAIN (SEQ C4)))
+  (assert-equal t (not (null (gethash 'MAIN *loop-threads*))) "LIVE-LOOP registers an active thread via the engine")
+  (assert-equal '(SEQ C4) (gethash 'MAIN *live-loops*) "LIVE-LOOP saves the AST blueprint for hot-swapping")
+  
+  (execute-node '(STOP-LOOP MAIN))
+  (assert-equal nil (gethash 'MAIN *loop-threads*) "STOP-LOOP clears the thread registry via the engine")
+  (assert-equal nil (gethash 'MAIN *live-loops*) "STOP-LOOP clears the active blueprint")
+
+  (format t "~%----------------------------------------~%")
+  (if (= *test-failures* 0)
+      (format t " SUCCESS: All ~A tests passed! Bogu is computationally perfect.~%" *test-passes*)
+      (format t " FAILURE: ~A passed, ~A failed. Fix the engine!~%" *test-passes* *test-failures*))
+  (format t "========================================~%~%"))

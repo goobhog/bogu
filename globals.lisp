@@ -15,6 +15,8 @@
 (defparameter *current-articulation* nil)
 (defparameter *transpose-offset* 0)
 (defparameter *velocity* 0.8)
+(defparameter *current-project* nil)
+
 
 ;; --- 3. LIVE-LOOPING THREADS ---
 (defparameter *live-loops* (make-hash-table :test 'equal))

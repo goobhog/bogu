@@ -61,6 +61,47 @@
 	((eq 'tq rval) (/ 0.5 5.0))
 	((eq 'hq rval) (/ 8.0 5.0))))
 
+(defun calculate-diatonic-pitch (base-pitch ast-transpose trk)
+  "Applies Track Key and Transposition rules to a base pitch, returning (VALUES pitch octave)."
+  (let* ((trk-key (track-key trk))
+         (trk-transpose (track-transpose-offset trk))
+         (total-transpose (+ ast-transpose trk-transpose))
+         ;; THE FIX: Safely default to Chromatic Transposition if there is no Key!
+         (transposed-pitch (+ base-pitch total-transpose))) 
+
+    ;; Run your Diatonic Delta Math here if a key exists
+    (when (and trk-key (not (= total-transpose 0)))
+      (let* ((root-str (string (car trk-key)))
+             (scale-str (string (cadr trk-key)))
+             (root-assoc (find-if (lambda (x) (string-equal (string (car x)) root-str)) *notes*))
+             (intervals-assoc (find-if (lambda (x) (string-equal (string (car x)) scale-str)) *scale-intervals*)))
+             
+        (when (and root-assoc intervals-assoc)
+          (let* ((root-pitch (round (cdr root-assoc)))
+                 (intervals (cdr intervals-assoc))
+                 (scale-pitches (mapcar (lambda (x) (+ root-pitch x)) intervals))
+                 (normalized-pitch (mod (round base-pitch) 12))
+                 (degree (position normalized-pitch scale-pitches :key (lambda (x) (mod x 12)))))
+                 
+            (if degree
+                (let* ((new-degree (+ degree total-transpose))
+                       (octave-shift (floor new-degree (length scale-pitches)))
+                       (wrapped-degree (mod new-degree (length scale-pitches)))
+                       (original-absolute (nth degree scale-pitches))
+                       (new-absolute (nth wrapped-degree scale-pitches))
+                       (total-new-absolute (+ new-absolute (* octave-shift 12)))
+                       (delta (- total-new-absolute original-absolute)))
+                  ;; OVERRIDE with Diatonic Math!
+                  (setf transposed-pitch (+ base-pitch delta)))
+                ;; Note isn't in scale? The chromatic fallback is already applied!
+                )))))
+
+    ;; Calculate Octave wrapping
+    (let ((new-pitch transposed-pitch)
+          (new-octave 4)) ;; Assume octave 4 base
+      (loop while (> new-pitch 11) do (decf new-pitch 12) (incf new-octave))
+      (loop while (< new-pitch 0) do (incf new-pitch 12) (decf new-octave))
+      (values new-pitch new-octave))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defmacro generate-notes (pitches octaves)

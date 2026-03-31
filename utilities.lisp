@@ -36,6 +36,16 @@
   (let ((str (string-downcase (symbol-name sym))))
     (cl-ppcre:scan "^[a-g][#b]?[0-8]$" str)))
 
+(defun parse-note-symbol (sym)
+  "Splits a symbol like C#4 into pitch C# and octave 4."
+  (let* ((str (string-upcase (symbol-name sym)))
+         ;; The last character is the octave
+         (octave-char (char str (1- (length str))))
+         ;; Everything before the last character is the pitch class
+         (pitch-str (subseq str 0 (1- (length str)))))
+    (values (intern pitch-str "BOGU")
+            (digit-char-p octave-char))))
+
 (defun expand-vars (args)
   "Recursively expands variables, checking both user and stdlib memory banks."
   (loop for arg in args
@@ -245,3 +255,47 @@
               (format t "[ENGRAVER] Success! PDF generated.~%")
               (format t "[ERROR] LilyPond failed to compile.~%")))
       (error (e) (format t "[ERROR] Could not execute lilypond.~%~A~%" e)))))
+
+(defun musical-data-p (obj)
+  "Checks if a result is a list of note/control plists."
+  (and (listp obj) (listp (car obj)) (getf (car obj) :type)))
+
+(defun commit (ast &optional (instr-override nil))
+  "Phase 4: The Committer. Glues musical data to the global timeline."
+  (let* ((events (execute-ast ast))
+         (trk (get-current-track))
+         (start-t (track-playhead trk))
+         (max-local-t 0.0))
+    
+    (when events 
+      (dolist (e events)
+        ;; 1. Measure the event to expand the timeline! 
+        (setf max-local-t (max max-local-t (+ (getf e :time) (or (getf e :dur) (getf e :written-dur)))))
+        
+        (cond
+          ;; 2A. PROCESS NOTES
+          ((and (eq (getf e :type) :note)
+                (not (eq (getf e :pitch-symbol) 'RST))
+                (not (eq (getf e :pitch-symbol) 'R)))
+           (let ((pitch-sym (getf e :pitch-symbol))
+                 (explicit-octave (getf e :octave))
+                 (ast-trans (or (getf e :transpose) 0)))
+             (multiple-value-bind (p calc-oct) (calculate-diatonic-pitch (cdr (assoc pitch-sym *notes*)) ast-trans trk)
+               (let* ((octave-shift (- calc-oct 4))
+                      (final-octave (+ explicit-octave octave-shift))
+                      (abs-t (+ start-t (getf e :time)))
+                      (p-dur (or (getf e :dur) (getf e :written-dur))))
+                 
+                 (push (list :type :note :instr (or instr-override (track-id trk))
+                             :time abs-t :dur p-dur :pitch p :octave final-octave
+                             :pch (+ final-octave 4 (/ p 100.0)) :vel (track-velocity trk))
+                       *score*)))))
+                       
+          ;; 2B. PROCESS CONTROLS (NEW!)
+          ((eq (getf e :type) :control)
+           (let ((new-c (copy-list e)))
+             (setf (getf new-c :instr) (or instr-override (track-id trk)))
+             (setf (getf new-c :time) (+ start-t (getf e :time))) ; Lock to absolute time
+             (push new-c *score*)))))
+      ;; 3. Advance playhead by the true measured length of the data (including trailing rests!)
+      (setf (track-playhead trk) (+ start-t max-local-t)))))

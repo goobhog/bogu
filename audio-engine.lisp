@@ -78,9 +78,9 @@
             (sec-per-beat (/ 60.0 current-bpm))
             (sec-per-grid (* sec-per-beat grid-beats)))
        
-       ;; THE FIX: If the engine just booted, don't wait! Fire instantly.
+       ;; The Fix: Return the shared epoch so all loops start at the exact same microsecond!
        (if (< elapsed-sec 0.5)
-           now
+           *master-epoch*
            (let* ((current-grid (floor (/ elapsed-sec sec-per-grid)))
                   (next-grid-sec (* (1+ current-grid) sec-per-grid))
                   (perfect-target (+ *master-epoch* (round (* next-grid-sec internal-time-units-per-second)))))

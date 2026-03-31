@@ -3,24 +3,24 @@ def c0 c2 g2 e3
 def f0 f2 a3 e3
 def ab0 ab2 c3 f3
 def g0 g2 d3 f3
-pas
+loop 4 [
 sarp e q. c0
 sarp e q. f0
 sarp e q. ab0
 sarp e q. g0
-pas
-psg 1
-psg 1
-psg 1
+]
+; psg 1
+; psg 1
+; psg 1
 i 2
-pas
+loop 2 [
 seq e c4 c4 b4 c4 d4
 seq s e4 g4
 f4 q.
 seq e rst rst b4 c4 c5 b5 a4
 seq s b4 c4 b4 c4 b4 c4 b4 c4 b4 c4 b4 c4 b4 c4 b4 d4
-pas
-psg 2
+]
+; psg 2
 a4 q
 seq e b4 d4
 seq st b4 c4 b4 c4 b4 c4 b4 c4 b4 c4 b4 c4
