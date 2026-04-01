@@ -25,5 +25,5 @@ jobs:
                --eval "(load \"~/quicklisp/setup.lisp\")" \
                --load boot.lisp \
                --load tests.lisp \
-               --eval "(bogu::run-bogu-tests)" \
+               --eval "(let ((*package* (find-package :bogu))) (bogu::run-bogu-tests))" \
                --eval "(uiop:quit (if (= bogu::*test-failures* 0) 0 1))"
