@@ -499,6 +499,22 @@
 
 ;; --- NOTATION ---
 
+(def-bogu-cmd STACCATO (args)
+  "Tree transformer: Shortens the absolute duration (:dur) of all child notes by a percentage, without altering their written rhythm."
+  (let* ((expanded (expand-vars args))
+         (percent (/ (float (car expanded)) 100.0))
+         (child-block (execute-ast (cdr expanded)))
+         (master-events nil))
+    (dolist (e child-block)
+      (let ((new-e (copy-list e)))
+        ;; Only shorten actual notes, leave control data and rests alone
+        (when (eq (getf new-e :type) :note)
+          ;; If it doesn't have an explicit :dur yet, default to its :written-dur
+          (let ((current-dur (or (getf new-e :dur) (getf new-e :written-dur))))
+            (setf (getf new-e :dur) (* current-dur percent))))
+        (push new-e master-events)))
+    (reverse master-events)))
+
 (def-bogu-cmd ENGRAVE (args)
   (let* ((expanded-args (expand-vars args))
          (filename (car expanded-args))
