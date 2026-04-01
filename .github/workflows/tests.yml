@@ -13,11 +13,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y sbcl
 
       - name: Run Bogu Master Diagnostics
-        # We load the system, run the tests, and exit with a code 
-        # based on the failure counter so GitHub knows if it passed.
         run: |
           sbcl --non-interactive \
-               --load bogu/boot.lisp \
-               --load bogu/tests.lisp \
+               --load boot.lisp \
+               --load tests.lisp \
                --eval "(bogu::run-bogu-tests)" \
                --eval "(uiop:quit (if (= bogu::*test-failures* 0) 0 1))"
