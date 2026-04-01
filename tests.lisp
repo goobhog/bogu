@@ -178,6 +178,20 @@
   (assert-equal nil (gethash 'MAIN *loop-threads*) "STOP-LOOP clears the thread registry via the engine")
   (assert-equal nil (gethash 'MAIN *live-loops*) "STOP-LOOP clears the active blueprint")
 
+  ;; NEW REGRESSION TESTS
+  (reset-bogu)
+  (let ((initial-time (track-playhead (get-current-track))))
+    (execute-node '(FLT 45))
+    (execute-node '(REVERB 60))
+    (assert-equal initial-time (track-playhead (get-current-track)) "Mixer commands operate independently of the sequencer timeline"))
+
+  (reset-bogu)
+  (let ((initial-time (track-playhead (get-current-track))))
+    (execute-node '(LIVE-LOOP LEAK-TEST (SEQ W C4)))
+    (sleep 0.1) ; Let the background thread boot and compile its timeline
+    (execute-node '(STOP-LOOP LEAK-TEST))
+    (assert-equal initial-time (track-playhead (get-current-track)) "LIVE-LOOP strictly sandboxes its playhead and does not leak into the global timeline"))
+
   (format t "~%----------------------------------------~%")
   (if (= *test-failures* 0)
       (format t " SUCCESS: All ~A tests passed! Bogu is computationally perfect.~%" *test-passes*)

@@ -269,8 +269,8 @@
     
     (when events 
       (dolist (e events)
-        ;; 1. Measure the event to expand the timeline! 
-        (setf max-local-t (max max-local-t (+ (getf e :time) (or (getf e :dur) (getf e :written-dur)))))
+        ;; 1. Measure the event to expand the timeline strictly by its musical footprint
+        (setf max-local-t (max max-local-t (+ (getf e :time) (or (getf e :written-dur) 0.0))))
         
         (cond
           ;; 2A. PROCESS NOTES
