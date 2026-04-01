@@ -1,5 +1,7 @@
 (in-package :bogu)
 
+(defparameter *tracks* (make-hash-table))
+
 (defmacro def-bogu-cmd (name args &body body)
   "A macro that defines a modular command and automatically registers it in the dictionary."
   (let ((func-name (intern (format nil "CMD-~A" name))))
@@ -532,8 +534,6 @@
   (velocity 0.8 :type float)
   (articulation :legato :type keyword)
   (key nil :type list))
-
-(defparameter *tracks* (make-hash-table))
 
 (defun get-current-track ()
   "Retrieves the active track, initializing it if it doesn't exist yet."
