@@ -1,3 +1,4 @@
+;;core/utilities.lisp
 (in-package :bogu)
 
 (defun flatten (l)
@@ -299,3 +300,14 @@
              (push new-c *score*)))))
       ;; 3. Advance playhead by the true measured length of the data (including trailing rests!)
       (setf (track-playhead trk) (+ start-t max-local-t)))))
+
+(defun extract-base-type (expected-sym)
+  "Purely extracts the base keyword, fixing trailing hyphens from OPTIONAL tags."
+  (let* ((sym-str (symbol-name expected-sym))
+         (pos (search "-OPTIONAL" sym-str)))
+    (intern (if pos (subseq sym-str 0 pos) sym-str) "KEYWORD")))
+
+(defun strip-comments (line)
+  "Removes inline Lisp comments from a string before parsing."
+  (let ((pos (position #\; line)))
+    (if pos (string-trim " " (subseq line 0 pos)) (string-trim " " line))))

@@ -1,3 +1,4 @@
+;; interface/composition-repl.lisp
 (in-package :bogu)
 
 (defparameter *allowed-commands* '(quantize def vars seq play rpt rst save help i reset poly sarp del bpm where bogu-load cell fluid transpose free staccato vol synth stop reverb reboot walk seek sync bang live-loop stop-loop engrave retro invert key sweep pan flt wait))
@@ -47,10 +48,11 @@
             ((and (listp node) (symbolp (car node))
                   (or (gethash (car node) *command-dictionary*)
                       (gethash (car node) *vars*)))
-             (let ((cmd-fn (gethash (car node) *command-dictionary*))
+             ;; THE FIX: Extract the dictionary entry, then funcall the :fn property
+             (let ((cmd-entry (gethash (car node) *command-dictionary*))
                    (var-val (gethash (car node) *vars*)))
                (cond
-                 (cmd-fn (setf result (funcall cmd-fn (cdr node))))
+                 (cmd-entry (setf result (funcall (getf cmd-entry :fn) (cdr node))))
                  (var-val (setf result (execute-ast var-val))))))
 
             ;; 5. Nested Block Recursion / Uncommanded Raw Pools (e.g. (C4 D4))
@@ -82,7 +84,8 @@
          (args (cdr node))
          (var-body (or (and (symbolp cmd) (gethash cmd *vars*))
                        (and (symbolp cmd) (gethash cmd *stdlib-vars*))))
-         (dict-cmd (and (symbolp cmd) (gethash cmd *command-dictionary*))))
+         ;; THE FIX: Fetch the dictionary entry
+         (dict-entry (and (symbolp cmd) (gethash cmd *command-dictionary*))))
     (cond
       ;; 1. It's a nested block
       ((listp cmd) (execute-ast node) t)
@@ -91,8 +94,9 @@
        (execute-ast var-body)
        t)
       ;; 3. THE MAGIC: It's a Modular Dictionary Command!
-      (dict-cmd
-       (funcall dict-cmd args)
+      (dict-entry
+       ;; THE FIX: Extract and funcall just the :fn
+       (funcall (getf dict-entry :fn) args)
        t)
       ;; 4. Completely Unknown
       (t (format t "~%[Compiler Error] Unknown command or variable: ~A~%" cmd)))))
@@ -110,14 +114,8 @@
                     (and (> (length trimmed-next) 0) 
                          (char= (char trimmed-next 0) #\;)))
           ;; Smart Automatic Semicolon Insertion
-          (let* ((len-prev (length trimmed-prev))
-                 (last-char-prev (if (> len-prev 0) (char trimmed-prev (1- len-prev)) #\Space))
-                 (first-char-next (if (> (length trimmed-next) 0) (char trimmed-next 0) #\Space))
-                 (separator (if (or (char= last-char-prev #\[)
-                                    (char= first-char-next #\[)
-                                    (char= first-char-next #\]))
-                                " "      
-                                " & ")))
+          ;; THE FIX: The parser no longer needs ampersands, just spaces!
+          (let* ((separator " "))
             (setf input (concatenate 'string input separator next-line))))))
     input))
 
@@ -147,7 +145,7 @@
   "Starts the Bogu REPL and routes all input through the Symbolic Compiler."
   (reset-bogu)
   (format t "~%===========================================================")
-  (format t "~%                    WELCOME TO BOGU                        ")
+  (format t "~%                     WELCOME TO BOGU                        ")
   (format t "~%===========================================================~%")
   (format t " Type 'help' for a comprehensive list of commands.~%~%")
   (format t " Type a project name to LOAD, or press ENTER for NEW.~%")

@@ -10,14 +10,17 @@
   (setf *test-passes* 0))
 
 (defun assert-equal (expected actual test-name)
-  "The fundamental unit of falsifiability. Now updates global counters."
-  (if (equal expected actual)
-      (progn
-        (incf *test-passes*)
-        (format t " [PASS] ~a~%" test-name))
-      (progn
-        (incf *test-failures*)
-        (format t " [FAIL] ~a~%  Expected: ~a~%  Got:      ~a~%" test-name expected actual))))
+  "The fundamental unit of falsifiability. Now handles floating-point jitter."
+  (let ((passed (if (and (numberp expected) (numberp actual))
+                    (< (abs (- expected actual)) 0.0001) ; Epsilon check
+                    (equal expected actual))))
+    (if passed
+        (progn
+          (incf *test-passes*)
+          (format t " [PASS] ~a~%" test-name))
+        (progn
+          (incf *test-failures*)
+          (format t " [FAIL] ~a~%  Expected: ~a~%  Got:      ~a~%" test-name expected actual)))))
 
 (defmacro assert-ast (test-name input-string expected-ast)
   "Parses a raw Bogu string and asserts the resulting AST matches the expected Lisp list perfectly."
@@ -64,10 +67,18 @@
   (format t "~%--- 1. Lexer & Parser ---~%")
   (assert-equal '([ SEQ Q C4 ]) (lex-bogu-string "[ seq q c4 ]") "Lexer separates brackets")
   (assert-ast "Basic Command Parsing" "bpm 120" ((BPM 120)))
-  (assert-ast "Ampersand Separation" "vol 80 & pan 50" ((VOL 80) (PAN 50)))
   (assert-ast "Nested Combinatoric Blocks" "seq q [ poly q c4 e4 g4 ]" ((SEQ Q (POLY Q C4 E4 G4))))
   (assert-ast "Variable Definition Brackets" "def my-chord [ c4 e4 g4 ]" ((DEF MY-CHORD (C4 E4 G4))))
-
+  (let* ((raw-str "seq q c4 fluid 4 h sub-pool wait 2.0")
+         (tokens (lex-bogu-string raw-str))
+         (ast (parse-bogu-tokens tokens)))
+    (assert-equal '((SEQ Q C4) (FLUID 4 H SUB-POOL) (WAIT 2.0)) ast "Parser intelligently groups symbols into sequential AST nodes without ampersands"))
+  ;; NEW REGRESSION TEST: The "Parser Shatter" Bug
+  (let* ((raw-str "sarp st w my-arp")
+         (tokens (lex-bogu-string raw-str))
+         (ast (parse-bogu-tokens tokens)))
+    (assert-equal '((SARP ST W MY-ARP)) ast "Parser should group variable arguments without shattering the command"))
+  
   ;; ---------------------------------------------------------
   ;; 2. LOGIC, VARIABLES, & TURING COMPLETENESS
   ;; ---------------------------------------------------------
@@ -101,7 +112,7 @@
          (poly-block (execute-ast '((POLY W C4 E4 G4))))
          (sim-block (execute-ast '((SEQ (SIM (SEQ C4 D4) E4) F4))))
          (cell-block (execute-ast '((CELL 1.5 (SEQ C4 D4 E4)))))) 
-         
+    
     (assert-equal '(1.0) (pluck :written-dur bare-note) "Bare note defaults to 1.0 duration")
     (assert-equal '(0.0 1.0 2.0) (pluck :time seq-block) "SEQ advances time (0.0, 1.0, 2.0)")
     (assert-equal '(0.0 0.0 0.0) (pluck :time poly-block) "POLY stacks all elements at time 0.0")
@@ -138,7 +149,7 @@
          (walk-test (execute-ast '((WALK 5 Q (C4 D4 E4)))))
          (sarp-len (measure-ast-duration "[ sarp 1 15 [ f3 ab3 c4 ] ]"))
          (fluid-len (measure-ast-duration "[ fluid 4 11 [ db1 ab1 ] ]")))
-         
+    
     (assert-equal nil zero-chance "CHANCE drops all events at 0.0 probability")
     (assert-equal '(C) (pluck :pitch-symbol choose-test) "CHOOSE securely branches logic based on probability")
     (assert-equal 5.0 (measure-written-length walk-test) "WALK generates exactly the requested step duration")
@@ -155,7 +166,7 @@
          (sweep-wrap-ast (execute-ast '((SWEEP PAN 20 80 (SEQ Q C4 D4)))))
          ;; The sweep control event is always cons'd to the front of the block!
          (ctrl-event (car sweep-wrap-ast)))
-         
+    
     (assert-equal 0.8 (getf (car vol-cmd) :start) "Mixer macros yield pure mathematical control data (0.0 to 1.0)")
     (assert-equal '(0.0 1.0 1.0) (pluck :time sweep-seq) "Standard SWEEP consumes 0.0 sequencer time (Ghost Time)")
     
@@ -165,6 +176,30 @@
     (assert-equal 0.2 (getf ctrl-event :start) "SWEEP perfectly parses starting amplitude")
     (assert-equal 0.8 (getf ctrl-event :end) "SWEEP perfectly parses ending amplitude")
     (assert-equal 3 (length sweep-wrap-ast) "SWEEP successfully preserves and evaluates all nested child notes"))
+  ;; NEW: STRICT ENVELOPE GRID TEST
+  (let* ((tail-sweep-ast (execute-ast '((SWEEP FLT 0 100 (STACCATO 50 (C4))))))
+         (tail-ctrl (car tail-sweep-ast)))
+    (assert-equal 1.0 (getf tail-ctrl :dur) "SWEEP mathematically locks automation duration to the grid, ignoring child audio physics"))
+  ;; NEW: MASTER INTEGRATION TEST (Nested Sweeps + Transformers + Generative)
+  (let* ((massive-block 
+          (execute-ast '((SWEEP PAN 0 100 
+                           (SWEEP FLT 75 35 
+                             (TRANSPOSE -2 
+                               (RETRO 
+                                 (SARP ST W EB2 EB3 BB3))))))))
+         (outer-pan-ctrl (nth 0 massive-block))
+         (inner-flt-ctrl (nth 1 massive-block))
+         (first-note (nth 2 massive-block)))
+    
+    ;; 1. Test Envelope Grid Integrity
+    (assert-equal 2 (getf outer-pan-ctrl :param) "Master Integration: Outer wrapper resolves to PAN")
+    (assert-equal 4.0 (getf outer-pan-ctrl :dur) "Master Integration: Outer PAN correctly locks to the 4.0 W grid")
+    (assert-equal 4 (getf inner-flt-ctrl :param) "Master Integration: Inner wrapper resolves to FLT")
+    (assert-equal 4.0 (getf inner-flt-ctrl :dur) "Master Integration: Inner FLT correctly locks to the 4.0 W grid")
+    
+    ;; 2. Test Transformer Pass-Through
+    (assert-equal -2 (getf first-note :transpose) "Master Integration: TRANSPOSE correctly passes through the nested envelopes")
+    (assert-equal :note (getf first-note :type) "Master Integration: Audio events remain structurally intact deep inside the nest"))
 
   ;; ---------------------------------------------------------
   ;; 8. SYSTEM STATE & LIVE-LOOP REGISTRY
@@ -191,6 +226,47 @@
     (sleep 0.1) ; Let the background thread boot and compile its timeline
     (execute-node '(STOP-LOOP LEAK-TEST))
     (assert-equal initial-time (track-playhead (get-current-track)) "LIVE-LOOP strictly sandboxes its playhead and does not leak into the global timeline"))
+
+  ;; ---------------------------------------------------------
+  ;; 9. AST VALIDATION & TYPE CHECKING
+  ;; ---------------------------------------------------------
+  (format t "~%--- 9. AST Validation Engine ---~%")
+  
+  ;; Test 1: Arity Catching (Missing Arguments)
+  (let ((caught-arity-error nil))
+    (handler-case 
+        (validate-signature 'CHOOSE '(:number :ast :ast-optional) '(0.5)) ; Missing Block A
+      (error (e) (setf caught-arity-error t)))
+    (assert-equal t caught-arity-error "Validation engine intercepts and halts on missing required arguments"))
+
+  ;; Test 2: Type Catching (Wrong Data Type)
+  (let ((caught-type-error nil))
+    (handler-case 
+        ;; Passing 'C4' (a symbol) where a :number is expected
+        (validate-signature 'FLUID '(:number :rhythm &rest :any) '(C4 Q E4 G4))
+      (error (e) (setf caught-type-error t)))
+    (assert-equal t caught-type-error "Validation engine enforces strict type checking (e.g. rejecting a note symbol in a :number slot)"))
+  
+  ;; Test 3: Rhythm Validation
+  (let ((caught-rhythm-error nil))
+    (handler-case 
+        ;; Passing an invalid rhythm
+        (validate-signature 'CELL '(:rhythm :ast) '(BANANA (C4)))
+      (error (e) (setf caught-rhythm-error t)))
+    (assert-equal t caught-rhythm-error "Validation engine correctly identifies and rejects invalid Bogu rhythms"))
+  
+  ;; Test 4: Validation Success Pass-through
+ ;; Test 4: Validation Success Pass-through
+  (let ((validation-passed nil))
+    (handler-case 
+        (progn
+          (validate-signature 'FLUID '(:number :rhythm &rest :any) '(4 Q C4 E4 G4))
+          (setf validation-passed t))
+      (error (e) 
+        ;; If it fails, print the exact reason!
+        (format t "~%[DEBUG] Validation failed with error: ~A~%" e)
+        (setf validation-passed nil)))
+    (assert-equal t validation-passed "Validation engine allows mathematically correct signatures to pass through to execution"))
 
   (format t "~%----------------------------------------~%")
   (if (= *test-failures* 0)

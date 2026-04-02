@@ -96,6 +96,10 @@ asig moogladder asig_raw, kcutoff, 0.25"
   endif
 
   fluidNote gieng, i_chan, imidinn, ivel
+  krelease release
+  if krelease == 1 then
+    fluidNote gieng, i_chan, imidinn, 0
+  endif
   " program-number))
 
 ;; Load the Orchestral Templates into Bogu's Memory!

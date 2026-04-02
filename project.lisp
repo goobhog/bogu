@@ -1,11 +1,6 @@
 ;; project.lisp
 (in-package :bogu)
 
-(defun strip-comments (line)
-  "Removes inline Lisp comments from a string before parsing."
-  (let ((pos (position #\; line)))
-    (if pos (string-trim " " (subseq line 0 pos)) (string-trim " " line))))
-
 (defun save (&optional filename)
   "Saves the project, prompting for a name if none exists."
   (when filename
@@ -67,20 +62,8 @@
                         (unless (string= trimmed-line "")
                           (push raw-line *bogu-code*) ;; Preserve raw line for saving
                           
-                          ;; 3. Smart Semicolon Insertion
-                          (let* ((trimmed-prev (string-trim " " input-string))
-                                 (last-char-prev (if (> (length trimmed-prev) 0) 
-                                                     (char trimmed-prev (1- (length trimmed-prev))) 
-                                                     #\Space))
-                                 (first-char-next (if (> (length trimmed-line) 0) 
-                                                      (char trimmed-line 0) 
-                                                      #\Space))
-                                 (separator (if (or (string= input-string "")
-                                                    (char= last-char-prev #\[)
-                                                    (char= first-char-next #\[)
-                                                    (char= first-char-next #\]))
-                                                " "      ; <-- Keep arguments attached!
-                                                " & "))) ; <-- Safely separate commands!
+                          ;; 3. Smart Semicolon Insertion (Ampersands Removed!)
+                          (let* ((separator " "))
                             (setf input-string (concatenate 'string input-string separator trimmed-line))
                             
                             ;; 4. Evaluate if brackets are balanced
@@ -106,19 +89,8 @@
                 while raw-line do
                   (let ((trimmed-line (strip-comments raw-line)))
                     (unless (string= trimmed-line "")
-                      (let* ((trimmed-prev (string-trim " " input-string))
-                             (last-char-prev (if (> (length trimmed-prev) 0) 
-                                                 (char trimmed-prev (1- (length trimmed-prev))) 
-                                                 #\Space))
-                             (first-char-next (if (> (length trimmed-line) 0) 
-                                                  (char trimmed-line 0) 
-                                                  #\Space))
-                             (separator (if (or (string= input-string "")
-                                                (char= last-char-prev #\[)
-                                                (char= first-char-next #\[)
-                                                (char= first-char-next #\]))
-                                            " " 
-                                            " & ")))
+                      ;; THE FIX: Ampersands removed!
+                      (let* ((separator " "))
                         (setf input-string (concatenate 'string input-string separator trimmed-line))
                         (when (= (count #\[ input-string) (count #\] input-string))
                           (handler-case

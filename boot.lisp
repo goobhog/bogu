@@ -16,17 +16,17 @@
 
 ;; 2. Define the strict dependency order
 (defparameter *bogu-build-order*
-  '("globals.lisp"      ; Global variables first
-    "utilities.lisp"    ; Basic helpers (used by math)
-    "music-math.lisp"   ; Pitch functions & generate-notes macro (must be early!)
-    "audio-pipe.lisp"   ; The Csound bridge
-    "audio-engine.lisp" ; Timing, scheduler, and LIVE-LOOP logic
-    "synth-defs.lisp"   ; Csound templates
-    "parser.lisp"       ; Language parser
-    "project.lisp"      ; File I/O and reset-bogu
-    "commands.lisp"     ; The command dictionary (relies on everything above)
-    "help.lisp"
-    "composition-repl.lisp"))
+  '("globals.lisp"              ; Global variables first
+    "core/utilities.lisp"       ; Basic helpers (used by math)
+    "stdlib/music-math.lisp"    ; Pitch functions & generate-notes macro
+    "audio/audio-pipe.lisp"     ; The Csound bridge
+    "audio/audio-engine.lisp"   ; Timing, scheduler, and LIVE-LOOP logic
+    "audio/synth-defs.lisp"     ; Csound templates
+    "core/parser.lisp"          ; Language parser
+    "project.lisp"              ; File I/O and reset-bogu
+    "stdlib/commands.lisp"      ; The command dictionary
+    "interface/help.lisp"
+    "interface/composition-repl.lisp"))
 
 ;; 3. Compile to machine code and load into RAM sequentially
 (dolist (file *bogu-build-order*)

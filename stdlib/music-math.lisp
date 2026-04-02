@@ -1,4 +1,5 @@
- (in-package :bogu)
+;; stdlib/music-math.lisp
+(in-package :bogu)
 
 (defparameter *notes* '((b# . 0) (c . 0)
     (c# . 1) (db . 1)
