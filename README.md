@@ -27,11 +27,19 @@ live-loop my-loop [
 ```
 
 ## Getting Started
-Bogu is lightweight and runs entirely locally.
-1. **Prerequisites:** Install [SBCL](http://www.sbcl.org/) (Steel Bank Common Lisp) and [Csound](https://csound.com/).
-2. **Clone:** `git clone https://github.com/yourusername/bogu.git`
-3. **Boot:** Open your terminal, navigate to the `bogu` folder, and run your Lisp compiler (`sbcl`).
-4. **Load:** Type `(load "boot.lisp")` to spin up the Csound server and drop into the Bogu prompt.
+Bogu is lightweight and runs entirely locally. 
+
+**1. Prerequisites (System Setup):** Before running Bogu, you will need to install a few standard tools:
+* **[SBCL](http://www.sbcl.org/):** (Steel Bank Common Lisp) The core compiler.
+* **[Csound](https://csound.com/):** The DSP audio engine.
+* **[Quicklisp](https://www.quicklisp.org/beta/):** The library manager for Lisp (Bogu uses this to fetch external dependencies, in this case the regex library [cl-ppcre](https://edicl.github.io/cl-ppcre/)).
+* **[LilyPond](https://lilypond.org/) *(Optional)*:** Required only if you want to use Bogu to generate PDF sheet music.
+
+**2. Clone:** `git clone https://github.com/goobhog/bogu.git`
+
+**3. Boot:** Open your terminal, navigate to the `bogu` folder, and run your Lisp compiler (`sbcl`).
+
+**4. Load:** Type `(load "boot.lisp")` to spin up the Csound server, fetch required Lisp libraries, and drop into the Bogu prompt.
 
 ## Contributing
 Bogu is still in an early stage. If you love Lisp, Csound, or generative music, check out the `good first issue` tags in the tracker. See `CONTRIBUTING.md` for details on how to run the test harness.
