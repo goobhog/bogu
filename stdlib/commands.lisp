@@ -173,25 +173,28 @@
 ;; =============================================================================
 
 (def-bogu-cmd SARP (:rhythm :rhythm &rest :any) (args)
-  "Arpeggiator that loops over a pool of notes to fill a target duration (s)."
+  "Sustained arpeggio. Plays through the provided pool EXACTLY ONCE at step r.
+   All notes sustain such that they release together at total duration s."
   (let* ((expanded (expand-vars args))
-         (r (rtm (car expanded)))   ; Step duration
-         (s (rtm (cadr expanded)))  ; Target total duration
+         (r (rtm (car expanded)))   ; Step duration (when the next note fires)
+         (s (rtm (cadr expanded)))  ; The 'sustain pedal' release point (first note's duration)
          (raw-nodes (cddr expanded))
          (nodes (if (and (= (length raw-nodes) 1) (listp (car raw-nodes)))
                     (car raw-nodes)
                     raw-nodes))
          (len (length nodes))
          (local-cursor 0.0)
-         (master-events nil)
-         ;; Calculate exactly how many steps fit in the target duration
-         (iterations (floor s r))) 
+         (master-events nil))
          
-    (dotimes (i iterations)
-      ;; Use modulo to loop back to the start of the pool if we run out of notes
-      (let ((node (nth (mod i len) nodes)))        
+    ;; THE FIX: Loop exactly 'len' times. No modulo, no infinite looping.
+    (dotimes (i len)
+      (let ((node (nth i nodes)))        
         (let ((evaluated-block (execute-ast (list node)))
-              (physics-dur (max 0.1 (+ 0.5 (- s (* r i))))))
+              ;; THE FIX: Note 1 gets 's', Note 2 gets 's - r', Note 3 gets 's - 2r'.
+              ;; They all mathematically release at the exact same moment.
+              ;; (We keep a 0.1 floor just so trailing notes make a tiny sound if 's' is short).
+              (physics-dur (max 0.1 (- s (* r i)))))
+              
           (dolist (e evaluated-block)
             (let ((new-e (copy-list e)))
               (setf (getf new-e :time) (+ local-cursor (getf e :time)))
@@ -200,9 +203,9 @@
               (push new-e master-events)))))
       (incf local-cursor r))
       
-    ;; Explicitly anchor the end of the block so the Stitcher knows EXACTLY where 
-    ;; the 15.0 boundary is, just like FLUID does!
-    (push (list :type :note :pitch-symbol 'RST :time s :written-dur 0.0) master-events)
+    ;; Explicitly anchor the end of the block. 
+    ;; The grid footprint is either 's' or the length of the arpeggio, whichever is longer.
+    (push (list :type :note :pitch-symbol 'RST :time (max s local-cursor) :written-dur 0.0) master-events)
     (reverse master-events)))
 
 (def-bogu-cmd FLUID (:number :rhythm &rest :any) (args)

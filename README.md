@@ -45,7 +45,7 @@ Bogu is lightweight and runs entirely locally.
 
 **3. Boot:** Open your terminal, navigate to the `bogu` folder, and run your Lisp compiler (`sbcl`).
 
-**4. Load:** Type `(load "boot.lisp")` to spin up the Csound server, fetch required Lisp libraries, and drop into the Bogu prompt.
+**4. Load:** Type `(load "boot.lisp")` to spin up the Csound server, fetch required Lisp libraries, and drop into the Bogu prompt (`bogu`).
 
 ## Contributing
 Bogu is still in an early stage. If you love Lisp, Csound, or generative music, check out the `good first issue` tags in the tracker. See `CONTRIBUTING.md` for details on how to run the test harness.
