@@ -12,6 +12,12 @@ As conceived, Bogu is primarily a tool for composition. Its conception was inspi
 
 ### A Quick Example
 ```lisp
+;; Load the 'saw' synthesizer into instrument slot 1
+synth 1 saw
+
+;; Reboot the audio engine to apply the new instrument
+reboot
+
 ;; Define a raw data pool of pitch symbols
 def my-arp [ eb2 eb3 bb3 eb4 f4 g4 c5 d5 a5 ]
 
