@@ -93,28 +93,40 @@
 ;; =============================================================================
 
 (def-bogu-cmd SEQ (:rhythm-optional &rest :any) (args)
-  "Generates a sequential list of events. If first arg is a rhythm, it overrides the block."
+  "Generates a sequential list of events. If rhythm is provided, it dictates the step size."
   (let* ((expanded (expand-vars args))
-         ;; Safely check if the first element is a master rhythm (like Q)
          (rhythm (if (and (atom (car expanded)) (numberp (rtm (car expanded)))) (rtm (car expanded)) nil))
-         (nodes (if rhythm (cdr expanded) expanded))
+         (nodes (smart-unwrap (if rhythm (cdr expanded) expanded)))
          (master-events nil)
          (local-cursor 0.0))
     (dolist (node nodes)
-      (let ((evaluated-block (execute-ast (list node)))
-            (block-len 0.0))
-        ;; 1. Measure the block's true length BEFORE shifting it!
-        (dolist (e evaluated-block)
-          (let ((effective-dur (if rhythm rhythm (getf e :written-dur))))
-            (setf block-len (max block-len (+ (getf e :time) effective-dur)))))
-        ;; 2. Shift the events and apply master rhythm
+      (let* ((evaluated-block (execute-ast (list node)))
+             (block-len 0.0)
+             ;; Check if this step is just a single note, or a complex generated block
+             (is-single (<= (length (remove-if (lambda (x) (not (eq (getf x :type) :note))) evaluated-block)) 1)))
+        
         (dolist (e evaluated-block)
           (let ((new-e (copy-list e)))
-            (when rhythm (setf (getf new-e :written-dur) rhythm)) 
+            ;; ONLY overwrite the duration if it's a simple single note!
+            ;; Otherwise, let the complex block keep its internal rhythm.
+            (when (and rhythm is-single)
+              (setf (getf new-e :written-dur) rhythm)
+              (when (getf new-e :dur) (setf (getf new-e :dur) rhythm)))
+            
+            ;; Place the event on the timeline relative to the cursor
             (setf (getf new-e :time) (+ local-cursor (getf e :time)))
-            (push new-e master-events)))
-        ;; 3. Advance cursor by the true measured length of the block
-        (incf local-cursor block-len)))
+            (push new-e master-events)
+            
+            ;; Measure the true footprint of the notes (The Critical Fix Area)
+            (setf block-len (max block-len (+ (getf e :time) 
+                                              (or (getf new-e :written-dur) 
+                                                  (getf new-e :dur) 
+                                                  0.0))))))
+            
+        ;; Advance the cursor! 
+        ;; If a master rhythm was provided, force the step size.
+        ;; If the block was empty (like a wait command that evaluated weirdly), ensure we still advance if rhythm exists.
+        (incf local-cursor (if rhythm rhythm block-len))))
     (reverse master-events)))
 
 (def-bogu-cmd POLY (:rhythm-optional &rest :any) (args)
@@ -133,17 +145,19 @@
     (reverse master-events)))
 
 (def-bogu-cmd SIM (&rest :any) (args)
-  "Parallel execution. Evaluates multiple blocks simultaneously. Structurally identical to POLY, but semantically designed for layering larger sequences."
-  (let* ((master-events nil))
-    (dolist (block args)
+  "Parallel execution. Evaluates multiple blocks simultaneously at time 0.0."
+  (let* ((expanded (expand-vars args))
+         (master-events nil))
+    (dolist (block expanded)
+      ;; Safely evaluate each block in absolute isolation
       (let ((evaluated-block (execute-ast (list block))))
         (dolist (e evaluated-block)
-          ;; Stack everything at 0.0
           (push (copy-list e) master-events))))
-    (reverse master-events)))
+    ;; Mathematically sort the combined streams chronologically before returning!
+    (sort master-events #'< :key (lambda (x) (getf x :time)))))
 
 (def-bogu-cmd CELL (:rhythm :ast) (args)
-  "A strict time-window. Evaluates a block, truncates anything that bleeds over, and forces the footprint to exactly cell-duration."
+  "A strict time-window. Evaluates a block, truncates anything that bleeds over both musically and acoustically."
   (let* ((expanded (expand-vars args))
          (cell-duration (rtm (car expanded)))
          (block (cadr expanded))
@@ -153,11 +167,20 @@
       ;; Only keep events that start BEFORE the cell dies
       (when (< (getf e :time) cell-duration)
         (let ((new-e (copy-list e)))
-          ;; If the note bleeds past the cell wall, mathematically chop its written duration!
+          
+          ;; Ensure the note has an explicit acoustic duration to manipulate
+          (unless (getf new-e :dur) (setf (getf new-e :dur) (or (getf new-e :written-dur) 0.1)))
+
+          ;; Mathematically chop the Grid Footprint
           (when (> (+ (getf new-e :time) (getf new-e :written-dur)) cell-duration)
-            (setf (getf new-e :written-dur) (- cell-duration (getf new-e :time))))
+            (setf (getf new-e :written-dur) (max 0.0 (- cell-duration (getf new-e :time)))))
+            
+          ;; THE FIX: Mathematically chop the Acoustic Physics so the synth cuts off!
+          (when (> (+ (getf new-e :time) (getf new-e :dur)) cell-duration)
+            (setf (getf new-e :dur) (max 0.0 (- cell-duration (getf new-e :time)))))
+
           (push new-e master-events))))
-    ;; Append a dummy rest at the cell wall so the parent SEQ knows exactly where to place the next block
+          
     (push (list :type :note :pitch-symbol 'RST :time cell-duration :written-dur 0.0) master-events)
     (reverse master-events)))
 
@@ -173,28 +196,18 @@
 ;; =============================================================================
 
 (def-bogu-cmd SARP (:rhythm :rhythm &rest :any) (args)
-  "Sustained arpeggio. Plays through the provided pool EXACTLY ONCE at step r.
-   All notes sustain such that they release together at total duration s."
+  "Sustained arpeggio. Plays through the provided pool EXACTLY ONCE at step r."
   (let* ((expanded (expand-vars args))
-         (r (rtm (car expanded)))   ; Step duration (when the next note fires)
-         (s (rtm (cadr expanded)))  ; The 'sustain pedal' release point (first note's duration)
-         (raw-nodes (cddr expanded))
-         (nodes (if (and (= (length raw-nodes) 1) (listp (car raw-nodes)))
-                    (car raw-nodes)
-                    raw-nodes))
+         (r (rtm (car expanded)))   
+         (s (rtm (cadr expanded)))  
+         (nodes (smart-unwrap (cddr expanded)))
          (len (length nodes))
          (local-cursor 0.0)
-         (master-events nil))
-         
-    ;; THE FIX: Loop exactly 'len' times. No modulo, no infinite looping.
+         (master-events nil))         
     (dotimes (i len)
       (let ((node (nth i nodes)))        
         (let ((evaluated-block (execute-ast (list node)))
-              ;; THE FIX: Note 1 gets 's', Note 2 gets 's - r', Note 3 gets 's - 2r'.
-              ;; They all mathematically release at the exact same moment.
-              ;; (We keep a 0.1 floor just so trailing notes make a tiny sound if 's' is short).
-              (physics-dur (max 0.1 (- s (* r i)))))
-              
+              (physics-dur (max 0.1 (- s (* r i)))))            
           (dolist (e evaluated-block)
             (let ((new-e (copy-list e)))
               (setf (getf new-e :time) (+ local-cursor (getf e :time)))
@@ -202,9 +215,6 @@
               (setf (getf new-e :dur) physics-dur) 
               (push new-e master-events)))))
       (incf local-cursor r))
-      
-    ;; Explicitly anchor the end of the block. 
-    ;; The grid footprint is either 's' or the length of the arpeggio, whichever is longer.
     (push (list :type :note :pitch-symbol 'RST :time (max s local-cursor) :written-dur 0.0) master-events)
     (reverse master-events)))
 
@@ -213,11 +223,7 @@
   (let* ((expanded (expand-vars args))
          (density (if (numberp (car expanded)) (car expanded) (parse-integer (string (car expanded)))))
          (r (rtm (cadr expanded)))
-         (raw-nodes (cddr expanded))
-         ;; THE FIX: Unwrap the pool!
-         (nodes (if (and (= (length raw-nodes) 1) (listp (car raw-nodes))) 
-                    (car raw-nodes) 
-                    raw-nodes))
+         (nodes (smart-unwrap (cddr expanded)))
          (len (length nodes))
          (master-events nil))
     (dotimes (i density)
@@ -227,15 +233,11 @@
           (dolist (e evaluated-node)
             (let ((new-e (copy-list e)))
               (setf (getf new-e :time) (+ random-offset (getf e :time)))
-              
-              ;; Mathematically chop bleeding notes so they don't stretch the loop!
               (when (> (+ (getf new-e :time) (getf new-e :written-dur)) r)
                 (setf (getf new-e :written-dur) (max 0.0 (- r (getf new-e :time)))))
               (when (getf new-e :dur)
                 (when (> (+ (getf new-e :time) (getf new-e :dur)) r)
                   (setf (getf new-e :dur) (max 0.0 (- r (getf new-e :time))))))
-              
-              ;; Only push the note if it hasn't been completely chopped away
               (when (> (getf new-e :written-dur) 0)
                 (push new-e master-events)))))))
     (push (list :type :note :pitch-symbol 'RST :time r :written-dur 0.0) master-events)
@@ -246,11 +248,7 @@
   (let* ((expanded (expand-vars args))
          (steps (if (numberp (car expanded)) (car expanded) (parse-integer (string (car expanded)))))
          (r (rtm (cadr expanded)))
-         (raw-nodes (cddr expanded))
-         ;; THE FIX: Unwrap the pool!
-         (nodes (if (and (= (length raw-nodes) 1) (listp (car raw-nodes))) 
-                    (car raw-nodes) 
-                    raw-nodes))
+         (nodes (smart-unwrap (cddr expanded)))
          (len (length nodes))
          (current-idx (random len))
          (local-cursor 0.0)
@@ -428,11 +426,9 @@
 
 (def-bogu-cmd DEF (:symbol :any) (args)
   (let* ((var-name (car args))
-         (var-contents (cdr args))
-         (stored-ast (if (and (= (length var-contents) 1) (listp (car var-contents)))
-                         (car var-contents) var-contents)))
+         (stored-ast (smart-unwrap (cdr args))))
     (setf (gethash var-name *vars*) stored-ast)
-    nil)) ; <-- Force a nil return so the AST stitcher ignores it!
+    nil))
 
 (def-bogu-cmd I (:number) (args)
   (setf *current-instrument* (car (expand-vars args)))

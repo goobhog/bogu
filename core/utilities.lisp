@@ -59,6 +59,16 @@
         else
           collect arg))
 
+(defun smart-unwrap (raw-nodes)
+  "Safely unwraps a single nested list ONLY if it contains raw musical data.
+   If the first item inside is a known Bogu command, it preserves the brackets for the AST."
+  (if (and (= (length raw-nodes) 1) 
+           (listp (car raw-nodes))
+           (not (and (symbolp (car (car raw-nodes)))
+                     (gethash (car (car raw-nodes)) *command-dictionary*))))
+      (car raw-nodes) 
+      raw-nodes))
+
 (defun bogu->csd (filename)
   "Prints bogu score data to a static csound .csd file, including the Master Limiter and Reverb Bus."
   (with-open-file (out (comp-path filename (bogu-folder filename) "csd")

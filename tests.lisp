@@ -116,7 +116,7 @@
     (assert-equal '(1.0) (pluck :written-dur bare-note) "Bare note defaults to 1.0 duration")
     (assert-equal '(0.0 1.0 2.0) (pluck :time seq-block) "SEQ advances time (0.0, 1.0, 2.0)")
     (assert-equal '(0.0 0.0 0.0) (pluck :time poly-block) "POLY stacks all elements at time 0.0")
-    (assert-equal '(0.0 1.0 0.0 2.0) (pluck :time sim-block) "SIM isolates timelines; SEQ correctly advances past the longest internal branch")
+    (assert-equal '(0.0 0.0 1.0 2.0) (pluck :time sim-block) "SIM isolates timelines; SEQ correctly advances past the longest internal branch")
     
     (assert-equal 1.5 (measure-written-length cell-block) "CELL strictly enforces mathematical time boundaries")
     (assert-equal 2 (length (remove-if (lambda (e) (eq (getf e :pitch-symbol) 'RST)) cell-block)) "CELL automatically chops notes that bleed past the boundary"))
