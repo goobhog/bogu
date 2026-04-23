@@ -289,6 +289,57 @@
         (execute-ast (list block-a))
         (if block-b (execute-ast (list block-b)) nil))))
 
+(def-bogu-cmd BEATS (&rest :any) (args)
+  "Generates a stream of pure timing data from raw rhythm symbols."
+  (let* ((expanded (expand-vars args))
+         (rhythms (smart-unwrap expanded))
+         (r-list (if (listp rhythms) rhythms (list rhythms)))
+         (master-events nil)
+         (local-cursor 0.0))
+    (dolist (r r-list)
+      (let ((dur (rtm r)))
+        ;; Generates dummy C4 notes strictly to hold rhythmic data
+        (push (list :type :note :pitch-symbol 'C :octave 4 :time local-cursor :written-dur dur :dur dur) master-events)
+        (incf local-cursor dur)))
+    (reverse master-events)))
+
+(def-bogu-cmd TREAD (:number :ast :ast) (args)
+  "Deterministic walker. Syntax: (TREAD start-index [intervals] [pool])"
+  (let* ((expanded (expand-vars args))
+         (start-idx (car expanded))
+         (intervals (smart-unwrap (cadr expanded)))
+         (int-list (if (listp intervals) intervals (list intervals)))
+         (pool (smart-unwrap (caddr expanded)))
+         (pool-len (length pool))
+         (master-events nil)
+         (current-idx start-idx)
+         (local-cursor 0.0))
+         
+    ;; 1. Push the starting note first
+    (let* ((first-sym (nth (mod current-idx pool-len) pool))
+           (first-node (execute-ast (list first-sym))))
+      (dolist (e first-node)
+        (let ((new-e (copy-list e)))
+          (setf (getf new-e :time) local-cursor)
+          (setf (getf new-e :written-dur) 1.0)
+          (setf (getf new-e :dur) 1.0)
+          (push new-e master-events)))
+      (incf local-cursor 1.0))
+      
+    ;; 2. Now walk the intervals
+    (dolist (step int-list)
+      (incf current-idx (if (numberp step) step (parse-integer (string step))))
+      (let* ((pitch-sym (nth (mod current-idx pool-len) pool))
+             (evaluated-node (execute-ast (list pitch-sym))))
+        (dolist (e evaluated-node)
+          (let ((new-e (copy-list e)))
+            (setf (getf new-e :time) local-cursor)
+            (setf (getf new-e :written-dur) 1.0)
+            (setf (getf new-e :dur) 1.0)
+            (push new-e master-events)))
+        (incf local-cursor 1.0)))
+    (reverse master-events)))
+
 
 ;; =============================================================================
 ;; 4. TREE TRANSFORMERS & MATH
@@ -419,6 +470,32 @@
       (setf combined-result (append combined-result (execute-ast body))))
     combined-result))
 
+(def-bogu-cmd ZIP (:ast :ast) (args)
+  "Combinatoric zipper. Fuses Time from Block A with Pitch from Block B."
+  (let* ((expanded (expand-vars args))
+         (block-a (execute-ast (list (car expanded))))
+         (block-b (execute-ast (list (cadr expanded))))
+         (len-a (length block-a))
+         (len-b (length block-b))
+         (master-events nil))
+    (when (and (> len-a 0) (> len-b 0))
+      ;; The final length is dictated entirely by Block A (The Time Block)
+      (dotimes (i len-a)
+        (let* ((event-a (nth i block-a))
+               ;; If the pitch block is shorter, we modulo wrap it to loop indefinitely!
+               (event-b (nth (mod i len-b) block-b)))
+          
+          ;; Only ZIP if both are notes (leaves controls/metadata alone)
+          (if (and (eq (getf event-a :type) :note) (eq (getf event-b :type) :note))
+              (let ((new-event (copy-list event-b)))
+                ;; Overwrite the Pitch's time properties with the Time's properties
+                (setf (getf new-event :time) (getf event-a :time))
+                (setf (getf new-event :dur) (getf event-a :dur))
+                (setf (getf new-event :written-dur) (getf event-a :written-dur))
+                (push new-event master-events))
+              (push (copy-list event-b) master-events)))))
+    (reverse master-events)))
+
 
 ;; =============================================================================
 ;; 5. LOGIC, STATE & VARIABLES
@@ -455,6 +532,17 @@
             (when (nth 4 expanded) (execute-ast (nth 4 expanded))))
         (format t "~%[Logic Error] Invalid IF syntax.~%"))))
 
+(def-bogu-cmd CLEF (:symbol) (args)
+  "Sets the default starting clef for the active track (e.g., bass or treble)."
+  (let* ((expanded (expand-vars args))
+         (c (string-downcase (string (car expanded))))
+         (trk (get-current-track)))
+    (setf (track-clef trk) c))
+  nil)
+
+(def-bogu-cmd BREAK () (args)
+  "Forces a system break in the engraved LilyPond sheet music."
+  (list (list :type :meta :subtype :line-break :time 0.0 :written-dur 0.0 :dur 0.0)))
 
 ;; =============================================================================
 ;; 6. MIXER & AUTOMATION
@@ -599,14 +687,13 @@
 ;; 8. NOTATION & EXPORT
 ;; =============================================================================
 
-(def-bogu-cmd ENGRAVE (:symbol :number) (args)
+(def-bogu-cmd ENGRAVE (:symbol :any) (args)
   (let* ((expanded-args (expand-vars args))
          (filename (car expanded-args))
          (instr (cadr expanded-args)))
     (if (and filename instr)
         (bogu->ly (string-downcase (string filename)) instr)
         (format t "~%[Syntax Error] engrave requires a filename and a track number.~%"))))
-
 
 ;; =============================================================================
 ;; 9. TIMELINE & TRACK STATE MANAGEMENT
@@ -618,7 +705,8 @@
   (transpose-offset 0 :type integer)
   (velocity 0.8 :type float)
   (articulation :legato :type keyword)
-  (key nil :type list))
+  (key nil :type list)
+  (clef "treble" :type string))
 
 (defun get-current-track ()
   "Retrieves the active track, initializing it if it doesn't exist yet."
@@ -636,7 +724,8 @@
                                  :transpose-offset (track-transpose-offset v)
                                  :velocity (track-velocity v)
                                  :articulation (track-articulation v)
-                                 :key (track-key v)))) 
+                                 :key (track-key v)
+                                 :clef (track-clef v)))) ; <-- Add this line
              *tracks*)
     new-ht))
 

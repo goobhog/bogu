@@ -56,6 +56,8 @@
         
         if var-lookup
           append (expand-vars var-lookup)
+        else if (listp arg)                 ;; <-- ADD THIS: If it's a bracketed list...
+          collect (expand-vars arg)         ;; <-- ADD THIS: ...look inside it!
         else
           collect arg))
 
@@ -157,7 +159,7 @@
   "Compiles the timeline into a LilyPond PDF. Handles individual parts or ALL tracks."
   (let* ((ly-path (comp-path filename (bogu-folder filename) "ly"))
          ;; 1. THE CONDUCTOR: Detect all active tracks if 'ALL is passed!
-         (all-instrs (if (string-equal (string target-instr) "ALL")
+         (all-instrs (if (string-equal (format nil "~A" target-instr) "ALL")
                          (remove-duplicates (mapcar (lambda (x) (getf x :instr)) *score*))
                          (list (if (numberp target-instr) target-instr (parse-integer (string target-instr))))))
          ;; Sort them so Track 1 is always at the top of the page
@@ -165,7 +167,7 @@
 
     (with-open-file (out ly-path :direction :output :if-exists :supersede)
       (format out "\\version \"2.24.0\"~%")
-      (format out "\\header { title = \"Bogu Score: ~A\" }~%" filename)
+      (format out "\\header { title = \"~A\" }~%" filename)
       (format out "\\score {~%")
       
       ;; 2. THE BINDER: Wrap everything in a StaffGroup for the Conductor Bracket
@@ -178,11 +180,13 @@
                (current-time 0.0)
                (grouped-score nil)
                (current-group nil)
-               (current-clef "treble"))
+	       (trk-obj (gethash instr *tracks*))
+               (current-clef (if trk-obj (track-clef trk-obj) "treble")))
 
           ;; Open the Staff and print the Margin Label
           (format out "    \\new Staff {~%")
           (format out "      \\set Staff.instrumentName = \"Track ~A\"~%" instr)
+	  (format out "      \\clef \"~A\"~%" current-clef)
 
           (if (null sorted-score)
               (format t "~%[ENGRAVER Warning] Track ~A is completely empty.~%" instr)
@@ -216,7 +220,8 @@
                       (cond
                         ((eq (getf m :subtype) :clef) (format out "\\clef \"~A\" " (getf m :val)))
                         ((eq (getf m :subtype) :cadenza-on) (format out "\\cadenzaOn \\omit Stem "))
-                        ((eq (getf m :subtype) :cadenza-off) (format out "\\cadenzaOff \\undo \\omit Stem \\bar \"|\" "))))
+                        ((eq (getf m :subtype) :cadenza-off) (format out "\\cadenzaOff \\undo \\omit Stem \\bar \"|\" "))
+			((eq (getf m :subtype) :line-break) (format out "\\bar \"||\" \\break "))))
 
                     ;; Auto-Clef & Notes
                     (when note-events
@@ -302,12 +307,20 @@
                              :pch (+ final-octave 4 (/ p 100.0)) :vel (track-velocity trk))
                        *score*)))))
                        
-          ;; 2B. PROCESS CONTROLS (NEW!)
+          ;; 2B. PROCESS CONTROLS 
           ((eq (getf e :type) :control)
            (let ((new-c (copy-list e)))
              (setf (getf new-c :instr) (or instr-override (track-id trk)))
              (setf (getf new-c :time) (+ start-t (getf e :time))) ; Lock to absolute time
-             (push new-c *score*)))))
+             (push new-c *score*)))
+
+	  ;; 2C. PROCESS META
+          ((eq (getf e :type) :meta)
+           (let ((new-m (copy-list e)))
+             (setf (getf new-m :instr) (or instr-override (track-id trk)))
+             (setf (getf new-m :time) (+ start-t (getf e :time)))
+             (push new-m *score*)))))
+      
       ;; 3. Advance playhead by the true measured length of the data (including trailing rests!)
       (setf (track-playhead trk) (+ start-t max-local-t)))))
 
