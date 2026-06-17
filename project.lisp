@@ -104,13 +104,9 @@
                           (setf input-string "")))))))))))
 
 (defun reset-bogu ()
-  "Resets all global variables to default, kills loops, and reloads the Standard Library."
-  (maphash (lambda (k v)
-             (when (and v (sb-thread:thread-alive-p v))
-               (sb-thread:terminate-thread v)))
-           *loop-threads*)
-  (clrhash *loop-threads*)
-  (clrhash *live-loops*)
+  "Resets all global variables, signals loops to exit, and reloads the Standard Library."
+  (clrhash *live-loops*)   ;; Safe loop termination signaling
+  (clrhash *loop-threads*) ;; Clean up active thread registry
   (setf *master-epoch* nil)
   (bpm 60)
   (setf *current-instrument* 1)

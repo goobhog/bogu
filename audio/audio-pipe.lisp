@@ -13,20 +13,23 @@
   (format t "[MIXER] Software Bus initialized to default levels.~%"))
 
 (defun osc-play (instr dur pch vel)
-  "Armor-Plated: Sends note data to Csound using the persistent pipe, guarded by a Mutex."
+  "Armor-Plated: Sends note data to Csound atomically, immune to thread interrupts."
   (when *pipe-stream*
-    (sb-thread:with-mutex (*pipe-lock*)
-      (format *pipe-stream* "i ~A 0 ~A ~A ~A~%" instr dur pch vel)
-      (force-output *pipe-stream*))))
+    (sb-sys:without-interrupts
+      (sb-thread:with-mutex (*pipe-lock*)
+        (sb-sys:allow-with-interrupts
+          (format *pipe-stream* "i ~A 0 ~A ~A ~A~%" instr dur pch vel)
+          (force-output *pipe-stream*))))))
 
 (defun osc-control (track param dur start end)
-  "Sends a continuous parameter envelope to the Csound Control Router."
+  "Sends a continuous parameter envelope to the Csound Control Router atomically."
   (when *pipe-stream*
-    (sb-thread:with-mutex (*pipe-lock*)
-      ;; THE FIX: Force the router to stay alive for at least 10 milliseconds!
-      (let ((safe-dur (max 0.01 dur)))
-        (format *pipe-stream* "i 100 0 ~A ~A ~A ~A ~A~%" safe-dur track param start end)
-        (force-output *pipe-stream*)))))
+    (sb-sys:without-interrupts
+      (sb-thread:with-mutex (*pipe-lock*)
+        (sb-sys:allow-with-interrupts
+          (let ((safe-dur (max 0.01 dur)))
+            (format *pipe-stream* "i 100 0 ~A ~A ~A ~A ~A~%" safe-dur track param start end)
+            (force-output *pipe-stream*)))))))
 
 (defun init-mixer ()
   "Sets default Vol (80%), Pan (Center), and Reverb (10%) and Filter (100%)."
@@ -50,7 +53,8 @@
     
     (format out "instr 97 ; SOUNDFONT BUS~%")
     (format out "aL, aR fluidOut gieng~%")
-    (format out "vincr ga_master_L, aL~%vincr ga_master_R, aR~%endin~%~%")
+    (format out "vincr ga_master_L, aL~%vincr ga_master_R, aR~%")
+    (format out "vincr ga_rvb_L, aL * 0.20~%~%vincr ga_rvb_R, aR * 0.20~%endin~%~%")
     
     (format out "instr 98 ; STEREO REVERB~%")
     ;; THE FIX: Protect the reverb feedback loop from exploding!

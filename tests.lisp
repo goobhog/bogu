@@ -73,6 +73,7 @@
          (tokens (lex-bogu-string raw-str))
          (ast (parse-bogu-tokens tokens)))
     (assert-equal '((SEQ Q C4) (FLUID 4 H SUB-POOL) (WAIT 2.0)) ast "Parser intelligently groups symbols into sequential AST nodes without ampersands"))
+  
   ;; NEW REGRESSION TEST: The "Parser Shatter" Bug
   (let* ((raw-str "sarp st w my-arp")
          (tokens (lex-bogu-string raw-str))
@@ -94,6 +95,12 @@
   (execute-node '(DEF TEST-VAR (C4 D4)))
   (assert-equal '(C D) (pluck :pitch-symbol (execute-ast '((TEST-VAR)))) "AST recursively expands DEF variables")
 
+  ;; NEW: Recursive variable expansion inside nested bracketed lists
+  (reset-bogu)
+  (execute-node '(DEF MY-SUB-MEL (E4 G4)))
+  (let ((expanded (expand-vars '((SEQ Q [ MY-SUB-MEL ])))))
+    (assert-equal '((SEQ Q (E4 G4))) expanded "expand-vars: Recursively resolves defined variables inside bracketed sublists"))
+
   ;; ---------------------------------------------------------
   ;; 3. MUSIC MATH & TRANSLATORS
   ;; ---------------------------------------------------------
@@ -102,6 +109,19 @@
   (assert-equal "b" (pch->lily 7.11) "LilyPond translates B3 (7.11) to b")
   (assert-equal 1.0 (rtm 'q) "RTM translates 'q to 1.0 beats")
   (assert-equal 0.375 (rtm 's.) "RTM translates 's. to 0.375 beats")
+
+  ;; NEW: Diatonic Scale Delta Transposition Math
+  (reset-bogu)
+  (let ((trk (get-current-track)))
+    ;; Set key to C Major
+    (setf (track-key trk) '(C MAJOR))
+    (multiple-value-bind (p oct) (calculate-diatonic-pitch 0 2 trk) ; C4 (0) + 2 diatonic steps -> E4 (4)
+      (assert-equal 4 p "Diatonic Transposition: C4 + 2 degrees in C Major -> E (pitch class 4)")
+      (assert-equal 4 oct "Diatonic Transposition: C4 + 2 degrees in C Major -> Octave 4"))
+    
+    (multiple-value-bind (p oct) (calculate-diatonic-pitch 0 -1 trk) ; C4 (0) - 1 diatonic step -> B3 (11)
+      (assert-equal 11 p "Diatonic Transposition: C4 - 1 degree in C Major -> B (pitch class 11)")
+      (assert-equal 3 oct "Diatonic Transposition: C4 - 1 degree in C Major -> Octave 3")))
 
   ;; ---------------------------------------------------------
   ;; 4. SEQUENCING & COMBINATORICS
@@ -120,6 +140,17 @@
     
     (assert-equal 1.5 (measure-written-length cell-block) "CELL strictly enforces mathematical time boundaries")
     (assert-equal 2 (length (remove-if (lambda (e) (eq (getf e :pitch-symbol) 'RST)) cell-block)) "CELL automatically chops notes that bleed past the boundary"))
+
+  ;; NEW: ZIP Combinator Verification
+  (let* ((zip-block (execute-ast '((ZIP (BEATS Q H) (C4 E4))))))
+    (assert-equal '(C E) (pluck :pitch-symbol zip-block) "ZIP: Correctly matches pitch sequence")
+    (assert-equal '(1.0 2.0) (pluck :written-dur zip-block) "ZIP: Correctly applies rhythms from the rhythm block")
+    (assert-equal '(0.0 1.0) (pluck :time zip-block) "ZIP: Correctly schedules absolute timeline offsets"))
+
+  ;; NEW: Deterministic TREAD Walker Verification
+  (let* ((tread-block (execute-ast '((TREAD 0 (1 2 -1) (C4 D4 E4 G4))))))
+    (assert-equal '(C D G E) (pluck :pitch-symbol tread-block) "TREAD: Correctly walks through note pool using intervals")
+    (assert-equal '(0.0 1.0 2.0 3.0) (pluck :time tread-block) "TREAD: Advances default 1.0 beat per step"))
 
   ;; ---------------------------------------------------------
   ;; 5. TREE TRANSFORMERS
@@ -176,10 +207,12 @@
     (assert-equal 0.2 (getf ctrl-event :start) "SWEEP perfectly parses starting amplitude")
     (assert-equal 0.8 (getf ctrl-event :end) "SWEEP perfectly parses ending amplitude")
     (assert-equal 3 (length sweep-wrap-ast) "SWEEP successfully preserves and evaluates all nested child notes"))
+
   ;; NEW: STRICT ENVELOPE GRID TEST
   (let* ((tail-sweep-ast (execute-ast '((SWEEP FLT 0 100 (STACCATO 50 (C4))))))
          (tail-ctrl (car tail-sweep-ast)))
     (assert-equal 1.0 (getf tail-ctrl :dur) "SWEEP mathematically locks automation duration to the grid, ignoring child audio physics"))
+
   ;; NEW: MASTER INTEGRATION TEST (Nested Sweeps + Transformers + Generative)
   (let* ((massive-block 
           (execute-ast '((SWEEP PAN 0 100 
@@ -256,17 +289,28 @@
     (assert-equal t caught-rhythm-error "Validation engine correctly identifies and rejects invalid Bogu rhythms"))
   
   ;; Test 4: Validation Success Pass-through
- ;; Test 4: Validation Success Pass-through
   (let ((validation-passed nil))
     (handler-case 
         (progn
           (validate-signature 'FLUID '(:number :rhythm &rest :any) '(4 Q C4 E4 G4))
           (setf validation-passed t))
       (error (e) 
-        ;; If it fails, print the exact reason!
         (format t "~%[DEBUG] Validation failed with error: ~A~%" e)
         (setf validation-passed nil)))
     (assert-equal t validation-passed "Validation engine allows mathematically correct signatures to pass through to execution"))
+
+  ;; ---------------------------------------------------------
+  ;; 10. METADATA & NOTATION Directives
+  ;; ---------------------------------------------------------
+  (format t "~%--- 10. Notation & Margin Metadata ---~%")
+  (reset-bogu)
+  (let ((trk (get-current-track)))
+    (execute-node '(CLEF BASS))
+    (assert-equal "bass" (track-clef trk) "CLEF: Successfully changes the track's default clef to bass")
+    
+    (let ((break-events (execute-ast '((BREAK)))))
+      (assert-equal :meta (getf (car break-events) :type) "BREAK: Generates a system meta event")
+      (assert-equal :line-break (getf (car break-events) :subtype) "BREAK: Sets the correct :line-break subtype")))
 
   (format t "~%----------------------------------------~%")
   (if (= *test-failures* 0)

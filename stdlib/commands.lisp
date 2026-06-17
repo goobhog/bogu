@@ -607,81 +607,90 @@
   nil)
 
 (def-bogu-cmd LIVE-LOOP (:symbol :rhythm-optional :ast) (args)
-  "Auto-sizing live-loop. Syntax: (LIVE-LOOP name [block]) OR (LIVE-LOOP name padding [block])"
+  "Auto-sizing live-loop. Safely monitors a state flag to avoid mutex deadlocks."
   (let* ((expanded (expand-vars args))
          (name (car expanded))
-	 (instr-id *current-instrument*)
-         ;; Safely check if the second argument is a raw atom/rhythm (e.g. 4, Q, E) to act as padding
+         (instr-id *current-instrument*)
          (has-padding (and (cadr expanded) (atom (cadr expanded)) (numberp (rtm (cadr expanded)))))
          (padding-beats (if has-padding (rtm (cadr expanded)) 0.0))
-         (block (if has-padding (caddr expanded) (cadr expanded)))
-         (old-thread (gethash name *loop-threads*)))
+         (block (if has-padding (caddr expanded) (cadr expanded))))
     
-    (when (and old-thread (sb-thread:thread-alive-p old-thread))
-      (sb-thread:terminate-thread old-thread))
-    
+    ;; 1. Update the block blueprint. If a loop of this name is already running,
+    ;; it will gracefully pick up the new block on its next iteration.
     (setf (gethash name *live-loops*) block)
     (format t "~%[LOOP] Armed live-loop '~A' (Auto-size + ~A beats padding).~%" name padding-beats)
     
-    (setf (gethash name *loop-threads*)
-          (sb-thread:make-thread
-           (lambda ()
-             (handler-case 
-                 ;; Start the loop's absolute timeline EXACTLY right now
-                 (let ((next-loop-start-time (get-internal-real-time)))
-                   (loop
-                     (let ((current-block (gethash name *live-loops*)))
-                       (unless current-block (return))
-                       
-                       (let ((*score* '())
-                             (*tracks* (clone-tracks-for-sandbox))
-                             (*current-instrument* instr-id))
-                         
-                         ;; 1. Evaluate the AST and generate the timeline
-                         (commit current-block)
-                         (setf *score* (sort *score* #'< :key (lambda (x) (getf x :time))))
-                         
-                         ;; 2. Natively calculate the exact musical footprint of the AST
-                         (let ((measured-beats (track-playhead (get-current-track))))
-                           
-                           ;; 3. Execute the timeline exactly on time
-                           (let* ((current-bpm (if *bpm* (car *bpm*) 60.0))
-                                  (sec-per-beat (float (/ 60.0 current-bpm))))
+    ;; 2. Only spawn a new thread if one is not already safely running.
+    (let ((existing-thread (gethash name *loop-threads*)))
+      (unless (and existing-thread (sb-thread:thread-alive-p existing-thread))
+        (setf (gethash name *loop-threads*)
+              (sb-thread:make-thread
+               (lambda ()
+                 (block thread-execution
+                   (handler-case 
+                       (let ((next-loop-start-time (get-internal-real-time)))
+                         (loop
+                           ;; Graceful Exit Check: Has this loop been removed from the registry?
+                           (let ((current-block (gethash name *live-loops*)))
+                             (unless current-block 
+                               (return-from thread-execution))
                              
-                             (dolist (event *score*)
-                               (let* ((offset-ms (round (* (* (getf event :time) sec-per-beat) internal-time-units-per-second)))
-                                      (target-ms (+ next-loop-start-time offset-ms)))
-                                 
-                                 ;; Sleep until the exact microsecond this specific event should fire
-                                 (loop while (< (get-internal-real-time) target-ms) do (sleep 0.001))
-                                 
-                                 (if (eq (getf event :type) :note)
-                                     (osc-play (getf event :instr) (* (getf event :dur) sec-per-beat) (getf event :pch) (getf event :vel))
-                                     (osc-control (getf event :instr) (getf event :param) (* (getf event :dur) sec-per-beat) (getf event :start) (getf event :end)))))
-                             
-                             ;; 4. Wait for the padding AND the final tail of the music!
-                             (let* ((total-loop-beats (+ measured-beats padding-beats))
-                                    (loop-dur-ms (round (* (* total-loop-beats sec-per-beat) internal-time-units-per-second))))
+                             (let ((*score* '())
+                                   (*tracks* (clone-tracks-for-sandbox))
+                                   (*current-instrument* instr-id))
                                
-                               (incf next-loop-start-time loop-dur-ms)
-                               (loop while (< (get-internal-real-time) next-loop-start-time) do (sleep 0.001)))))))))
-               (error (e) (format t "~%[LOOP ERROR] ~A~%" e))))
-           :name (format nil "bogu-loop-~A" name)))
+                               ;; Compile the AST
+                               (commit current-block)
+                               (setf *score* (sort *score* #'< :key (lambda (x) (getf x :time))))
+                               
+                               (let* ((measured-beats (track-playhead (get-current-track)))
+                                      (current-bpm (if *bpm* (car *bpm*) 60.0))
+                                      (sec-per-beat (float (/ 60.0 current-bpm))))
+                                 
+                                 ;; Event Playback Loop
+                                 (dolist (event *score*)
+                                   (let* ((offset-ms (round (* (* (getf event :time) sec-per-beat) internal-time-units-per-second)))
+                                          (target-ms (+ next-loop-start-time offset-ms)))
+                                     
+                                     ;; Safe Sleep Loop: Thread monitors state while waiting
+                                     (loop while (< (get-internal-real-time) target-ms) do
+                                       (unless (gethash name *live-loops*)
+                                         (return-from thread-execution))
+                                       (sleep 0.001))
+                                     
+                                     ;; Dispatch to Csound safely
+                                     (if (eq (getf event :type) :note)
+                                         (osc-play (getf event :instr) (* (getf event :dur) sec-per-beat) (getf event :pch) (getf event :vel))
+                                         (osc-control (getf event :instr) (getf event :param) (* (getf event :dur) sec-per-beat) (getf event :start) (getf event :end)))))
+                                 
+                                 ;; Loop Boundary Sync Sleep
+                                 (let* ((total-loop-beats (+ measured-beats padding-beats))
+                                        (loop-dur-ms (round (* (* total-loop-beats sec-per-beat) internal-time-units-per-second))))
+                                   
+                                   (incf next-loop-start-time loop-dur-ms)
+                                   (loop while (< (get-internal-real-time) next-loop-start-time) do
+                                     (unless (gethash name *live-loops*)
+                                       (return-from thread-execution))
+                                     (sleep 0.001))))))))
+                     (error (e) (format t "~%[LOOP ERROR] ~A~%" e)))))
+               :name (format nil "bogu-loop-~A" name)))))
     nil))
 
 (def-bogu-cmd STOP-LOOP (:symbol) (args)
+  "Stops active loops by removing their state flags, ensuring graceful exits."
   (let ((name (car (expand-vars args))))
     (if (eq name 'ALL)
-        (progn (maphash (lambda (k th) (when (and th (sb-thread:thread-alive-p th)) (sb-thread:terminate-thread th))) *loop-threads*)
-               (clrhash *loop-threads*) (clrhash *live-loops*) (format t "~%[LOOP] All terminated.~%"))
-        (let ((thread (gethash name *loop-threads*)))
-          (if thread
-              (progn (when (sb-thread:thread-alive-p thread) (sb-thread:terminate-thread thread))
-                     (remhash name *loop-threads*) (remhash name *live-loops*)
-                     (format t "~%[LOOP] Terminated '~A'.~%" name))
-              (format t "~%[LOOP Error] Not running.~%"))))
+        (progn
+          (clrhash *live-loops*)   ;; Instantly flags all threads to exit safely
+          (clrhash *loop-threads*) ;; Clean up the thread registry
+          (format t "~%[LOOP] Disarmed all loops. Awaiting graceful thread exits...~%"))
+        (if (gethash name *live-loops*)
+            (progn
+              (remhash name *live-loops*)   ;; Flag specific thread to exit
+              (remhash name *loop-threads*) ;; Remove thread object from registry
+              (format t "~%[LOOP] Disarmed loop '~A'.~%" name))
+            (format t "~%[LOOP Error] Loop '~A' is not running.~%" name)))
     nil))
-
 
 ;; =============================================================================
 ;; 8. NOTATION & EXPORT
@@ -698,6 +707,20 @@
 ;; =============================================================================
 ;; 9. TIMELINE & TRACK STATE MANAGEMENT
 ;; =============================================================================
+
+(defun clear-score-only ()
+  "Flushes the active composition timeline and signals loops to stop safely."
+  (clrhash *live-loops*)   ;; Signals loops to exit gracefully
+  (clrhash *loop-threads*) ;; Clean up thread tracking
+  (setf *score* '())
+  (clrhash *tracks*)
+  (setf *master-epoch* nil)
+  (format t "~%[SYSTEM] Score cleared. Live-loops signaled to terminate safely. Variables preserved.~%"))
+
+(def-bogu-cmd CLEAR () (args)
+  (declare (ignore args))
+  (clear-score-only)
+  nil)
 
 (defstruct track
   (id 1 :type integer)

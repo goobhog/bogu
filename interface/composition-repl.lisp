@@ -1,7 +1,7 @@
 ;; interface/composition-repl.lisp
 (in-package :bogu)
 
-(defparameter *allowed-commands* '(quantize def vars seq play rpt rst save help i reset poly sarp del bpm where bogu-load cell fluid transpose free staccato vol synth stop reverb reboot walk seek sync bang live-loop stop-loop engrave retro invert key sweep pan flt wait))
+(defparameter *allowed-commands* '(quantize def vars seq play rpt rst save help i reset poly sarp del bpm where bogu-load cell fluid transpose free staccato vol synth stop reverb reboot walk seek sync bang clear live-loop stop-loop engrave retro invert key sweep pan flt wait))
 
 (defun execute-ast (ast)
   "Phase 3: The Symbolic Reducer. Resolves variables and commands into pure music data."

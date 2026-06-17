@@ -80,9 +80,9 @@
         (when (and root-assoc intervals-assoc)
           (let* ((root-pitch (round (cdr root-assoc)))
                  (intervals (cdr intervals-assoc))
-                 (scale-pitches (mapcar (lambda (x) (+ root-pitch x)) intervals))
+                 (scale-pitches (mapcar (lambda (x) (mod (+ root-pitch x) 12)) intervals))
                  (normalized-pitch (mod (round base-pitch) 12))
-                 (degree (position normalized-pitch scale-pitches :key (lambda (x) (mod x 12)))))
+                 (degree (position normalized-pitch scale-pitches)))
                  
             (if degree
                 (let* ((new-degree (+ degree total-transpose))
