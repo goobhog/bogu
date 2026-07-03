@@ -42,10 +42,9 @@
     (reverse master-events)))
 
 (def-bogu-cmd POLY (:rhythm-optional &rest :any) (args)
-  "Simultaneous evaluation. Stacks all elements vertically at local time 0.0."
+  "Simultaneous evaluation. Geometrically collapses all elements vertically to local time 0.0."
   (let* ((expanded (expand-vars args))
          (rhythm (if (and (atom (car expanded)) (numberp (rtm (car expanded)))) (rtm (car expanded)) nil))
-         ;; THE FIX: Smart-unwrap shatters variables into individual elements!
          (nodes (smart-unwrap (if rhythm (cdr expanded) expanded)))
          (nodes-list (if (listp nodes) nodes (list nodes)))
          (master-events nil))
@@ -53,8 +52,16 @@
       (let ((evaluated-block (execute-ast (list node))))
         (dolist (e evaluated-block)
           (let ((new-e (copy-list e)))
-            (when rhythm (setf (getf new-e :written-dur) rhythm))
-            ;; POLY leaves :time alone, stacking everything!
+            (when rhythm 
+              ;; 1. Stretch the sequencer timeline footprint
+              (setf (getf new-e :written-dur) rhythm)
+              ;; 2. Stretch the acoustic synth gate physics!
+              (when (getf new-e :dur) (setf (getf new-e :dur) rhythm)))
+            
+            ;; THE PHILOSOPHICAL FIX:
+            ;; Project everything onto the Y-axis. Destroy the X-axis (time).
+            (setf (getf new-e :time) 0.0) 
+            
             (push new-e master-events)))))
     (reverse master-events)))
 
