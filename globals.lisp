@@ -1,3 +1,4 @@
+;;globals.lisp
 (in-package :bogu)
 
 ;; --- 1. SYSTEM STATE ---
@@ -9,7 +10,6 @@
 ;; --- 2. THE COMPOSITION MATRIX ---
 (defparameter *score* '())
 (defparameter *bogu-code* '())
-;;(defparameter *playheads* (make-hash-table))
 (defparameter *current-instrument* 1)
 (defparameter *current-key* nil)
 (defparameter *current-articulation* nil)
@@ -17,6 +17,16 @@
 (defparameter *velocity* 0.8)
 (defparameter *current-project* nil)
 
+(defstruct track
+  (id 1 :type integer)
+  (playhead 0.0 :type float)
+  (transpose-offset 0 :type integer)
+  (velocity 0.8 :type float)
+  (articulation :legato :type keyword)
+  (key nil :type list)
+  (clef "treble" :type string))
+
+(defparameter *tracks* (make-hash-table))
 
 ;; --- 3. LIVE-LOOPING THREADS ---
 (defparameter *live-loops* (make-hash-table :test 'equal))
@@ -31,3 +41,6 @@
 ;; --- 5. HARDWARE RACK ---
 (defparameter *synth-templates* (make-hash-table))
 (defparameter *synth-rack* (make-hash-table))
+(defparameter *mixer-params* 
+  '((VOL . 1) (V . 1) (PAN . 2) (P . 2) (REVERB . 3) (RVB . 3) (FLT . 4) (F . 4))
+  "Maps Bogu mixer parameter symbols to their Csound hardware bus IDs.")

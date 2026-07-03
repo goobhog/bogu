@@ -42,41 +42,17 @@
 (defvar *csound-process* nil "Holds the background Csound audio server.")
 
 (defun generate-bogu-server ()
-  (with-open-file (out "bogu-server.csd" :direction :output :if-exists :supersede)
-    (format out "<CsoundSynthesizer>~%<CsOptions>~%-odac -m0 -d -L /tmp/bogu_pipe~%</CsOptions>~%<CsInstruments>~%")
-    (format out "sr = 44100~%ksmps = 128~%nchnls = 2~%0dbfs = 1.0~%")
-    (format out "ga_master_L init 0~%ga_master_R init 0~%ga_rvb_L init 0~%ga_rvb_R init 0~%~%")
+  "Compiles the current *synth-rack* into the static Csound scaffold."
+  (let* ((scaffold-path (merge-pathnames "assets/bogu-scaffold.csd" *bogu-dir*))
+         ;; uiop is safely built into ASDF/Quicklisp
+         (scaffold-str (uiop:read-file-string scaffold-path))
+         (synth-str (with-output-to-string (s)
+                      (maphash (lambda (id code) 
+                                 (format s "instr ~A~%~A~%endin~%~%" id code)) 
+                               *synth-rack*))))
     
-    (format out "gieng fluidEngine~%")
-    (format out "gisf fluidLoad \"orchestra.sf2\", gieng, 1~%~%")
-    (maphash (lambda (id code) (format out "instr ~A~%~A~%endin~%~%" id code)) *synth-rack*)
-    
-    (format out "instr 97 ; SOUNDFONT BUS~%")
-    (format out "aL, aR fluidOut gieng~%")
-    (format out "vincr ga_master_L, aL~%vincr ga_master_R, aR~%")
-    (format out "vincr ga_rvb_L, aL * 0.20~%~%vincr ga_rvb_R, aR * 0.20~%endin~%~%")
-    
-    (format out "instr 98 ; STEREO REVERB~%")
-    ;; THE FIX: Protect the reverb feedback loop from exploding!
-    (format out "aSafeL = tanh(ga_rvb_L)~%")
-    (format out "aSafeR = tanh(ga_rvb_R)~%")
-    (format out "aL, aR reverbsc aSafeL, aSafeR, 0.85, 7000~%")
-    (format out "vincr ga_master_L, aL~%vincr ga_master_R, aR~%endin~%~%")
-    
-    (format out "instr 99 ; MASTER BUS~%aOutL = 0.95 * tanh(ga_master_L)~%aOutR = 0.95 * tanh(ga_master_R)~%")
-    (format out "outs aOutL, aOutR~%ga_master_L = 0~%ga_master_R = 0~%ga_rvb_L = 0~%ga_rvb_R = 0~%endin~%~%")
-    
-    (format out "instr 100 ; CONTROL ROUTER~%itrack = p4~%iparam = p5~%istart = p6~%iend = p7~%")
-    (format out "kval linseg istart, p3, iend~%")
-    (format out "if iparam == 1 then~%chnset kval, sprintf(\"vol_%d\", itrack)~%")
-    (format out "elseif iparam == 2 then~%chnset kval, sprintf(\"pan_%d\", itrack)~%")
-    (format out "elseif iparam == 3 then~%chnset kval, sprintf(\"rvb_%d\", itrack)~%")
-    (format out "elseif iparam == 4 then~%chnset kval, sprintf(\"flt_%d\", itrack)~%endif~%endin~%")
-    
-    (format out "</CsInstruments>~%<CsScore>~%")
-    (format out "f 2 0 4096 10 1~%")
-    (format out "i 99 0 86400~%i 98 0 86400~%i 97 0 86400~%")
-    (format out "</CsScore>~%</CsoundSynthesizer>~%")))
+    (with-open-file (out "bogu-server.csd" :direction :output :if-exists :supersede)
+      (write-string (cl-ppcre:regex-replace ";;;BOGU_SYNTH_RACK;;;" scaffold-str synth-str) out))))
 
 (defun reboot-audio-server ()
   "Kills the old Csound, generates a new server file, and hot-boots it in the background."

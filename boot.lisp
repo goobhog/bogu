@@ -4,29 +4,35 @@
 (defpackage :bogu
   (:use :cl))
 
-;; 0. Prepare the Environment (Load dependencies BEFORE compiling)
+(in-package :bogu)
+
+;; 0. Prepare the Environment
 (format t "[BOOT] Loading external libraries...~%")
 (ql:quickload "cl-ppcre")
-;;(ql:quickload "osc")
 
-;; 1. Automatically detect the EXACT directory this script is sitting in
 (defparameter *bogu-dir*
   (make-pathname :name nil :type nil 
                  :defaults (or *compile-file-truename* *load-truename* *default-pathname-defaults*)))
 
-;; 2. Define the strict dependency order
+;; 2. Strict Dependency Order
 (defparameter *bogu-build-order*
-  '("globals.lisp"              ; Global variables first
-    "core/utilities.lisp"       ; Basic helpers (used by math)
-    "stdlib/music-math.lisp"    ; Pitch functions & generate-notes macro
-    "audio/audio-pipe.lisp"     ; The Csound bridge
-    "audio/audio-engine.lisp"   ; Timing, scheduler, and LIVE-LOOP logic
-    "audio/synth-defs.lisp"     ; Csound templates
-    "core/parser.lisp"          ; Language parser
-    "project.lisp"              ; File I/O and reset-bogu
-    "stdlib/commands.lisp"      ; The command dictionary
+  '("globals.lisp"              
+    "core/utilities.lisp"       
+    "core/validator.lisp"
+    "stdlib/music-math.lisp"    
+    "audio/audio-pipe.lisp"     
+    "audio/audio-engine.lisp"   
+    "audio/synth-defs.lisp"     
+    "core/parser.lisp"          
+    "core/evaluator.lisp"       
+    "stdlib/commands.lisp"           
+    "interface/export.lisp"     
+    "interface/project.lisp"    
     "interface/help.lisp"
-    "interface/composition-repl.lisp"))
+    "interface/composition-repl.lisp"
+    "core/l-system.lisp"
+    
+    "tests.lisp"))              
 
 ;; 3. Compile to machine code and load into RAM sequentially
 (dolist (file *bogu-build-order*)
@@ -38,6 +44,3 @@
           (error "[BOOT FATAL ERROR] Lisp could not find or compile ~A" full-path)))))
 
 (format t "~%[BOOT] All systems online. Starting engine...~%")
-
-;; 4. Automatically launch the DSL
-;;(bogu)

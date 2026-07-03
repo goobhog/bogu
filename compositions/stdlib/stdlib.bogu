@@ -1,28 +1,98 @@
-; ==========================================
-; BOGU STANDARD LIBRARY
-; Base definitions built around Middle C (C4)
-; ==========================================
+;; =============================================================================
+;; BOGU STANDARD LIBRARY
+;; A toolkit of combinatorial primitives, harmonic shapes, and L-System rules.
+;; Base definitions are built around Middle C (C4) for algebraic manipulation.
+;; =============================================================================
 
-; --- 1. Triad Primitives (Pure Data) ---
-def maj c4 e4 g4
-def min c4 eb4 g4
-def dim c4 eb4 gb4
-def aug c4 e4 g#4
+;; -----------------------------------------------------------------------------
+;; 1. HARMONY: TRIADS & EXTENSIONS (Pure Data)
+;; -----------------------------------------------------------------------------
+;; Basic Triads
+def maj [ c4 e4 g4 ]
+def min [ c4 eb4 g4 ]
+def dim [ c4 eb4 gb4 ]
+def aug [ c4 e4 g#4 ]
 
-; --- 2. 7th Chord Primitives ---
-def maj7 c4 e4 g4 b4
-def min7 c4 eb4 g4 bb4
-def dom7 c4 e4 g4 bb4
-def dim7 c4 eb4 gb4 a4  ; A4 is Bbb (enharmonically) for a closed voicing
+;; 7th Chords
+def maj7  [ c4 e4 g4 b4 ]
+def min7  [ c4 eb4 g4 bb4 ]
+def dom7  [ c4 e4 g4 bb4 ]
+def dim7  [ c4 eb4 gb4 a4 ]
+def m7b5  [ c4 eb4 gb4 bb4 ] ;; Half-diminished
 
-; --- 3. Shape Primitives ---
-def arp-up c4 e4 g4 c5
-def arp-down c5 g4 e4 c4
-def arp-broken c4 g4 e4 c5
+;; Extended & Modern Harmony
+def maj9  [ c4 e4 g4 b4 d5 ]
+def min9  [ c4 eb4 g4 bb4 d5 ]
+def quartal [ c4 f4 bb4 eb5 ]
+def so-what [ d3 d4 g4 c5 f5 ] ;; Classic Miles Davis voicing
+def cluster [ c4 db4 d4 eb4 ]  ;; Dense dissonance for granular textures
 
-; --- 4. System Presets ---
-def rack-basic [ synth 1 sine & synth 2 saw & synth 3 pluck & reboot ]
+;; -----------------------------------------------------------------------------
+;; 2. RHYTHMIC CELLS (Pure Timing Data)
+;; -----------------------------------------------------------------------------
+;; By using BEATS, these return pure temporal arrays to be ZIPped with pitches.
+def tresillo  [ beats e. e. e ]         ;; 3-3-2 syncopation (2 beats total)
+def hemiola   [ beats q q q ]           ;; 3 over 2 feel (3 beats total)
+def clave-son [ beats e. e. e q q ]     ;; 3-2 Afro-Cuban Clave (4 beats total)
+def motor     [ rpt 8 [ beats s ] ]     ;; 16th note drive (2 beats total)
 
-; --- 5. Scales (For Generative Algorithms) ---
-def penta-c [ c4 d4 e4 g4 a4 c5 d5 e5 g5 a5 c6 ]
+;; -----------------------------------------------------------------------------
+;; 3. GESTURES & ORNAMENTATION
+;; -----------------------------------------------------------------------------
+;; Classical figurations wrapped in exact timing boundaries.
+def trill       [ rpt 4 [ seq t c4 d4 ] ]          ;; 1 beat duration
+def mordent     [ seq st c4 d4 c4 ]                ;; Fast triplet bite
+def alberti     [ seq s c3 g3 e3 g3 ]              ;; 1 beat classical bass
+def sweep-up    [ sarp s q [ penta-c ] ]           ;; Pentatonic harp sweep
+def sweep-down  [ retro [ sweep-up ] ]
+
+;; -----------------------------------------------------------------------------
+;; 4. DIATONIC POOLS (For SARP, FLUID, and WALK)
+;; -----------------------------------------------------------------------------
+def penta-c  [ c4 d4 e4 g4 a4 c5 d5 e5 g5 a5 c6 ]
 def penta-am [ a3 c4 d4 e4 g4 a4 c5 d5 e5 g5 a5 ]
+def whole-t  [ c4 d4 e4 f#4 g#4 a#4 c5 d5 e5 ]
+def octatonic [ c4 d4 eb4 f4 gb4 ab4 a4 b4 c5 ]
+
+;; -----------------------------------------------------------------------------
+;; 5. L-SYSTEM RULES (Structural Forms)
+;; -----------------------------------------------------------------------------
+;; Functional pattern matchers that evaluate variables recursively.
+rule [ M ?x ] [ ?x ?x ]
+rule [ K ?x ?y ] [ ?x ]
+rule [ KI ?x ?y ] [ ?y ]
+rule [ W ?x ?y ] [ ?x ?y ?y ]
+rule [ C ?x ?y ?z ] [ ?x ?z ?y ]
+
+;; COMBINATORIC GEOMETRY (The Birds)
+;; STARLING (S) - Divergent Parallelism
+;; Evaluates a seed through two different transformations simultaneously.
+rule [ S-TRANS ?intA ?intB ?seed ] [ sim [ transpose ?intA ?seed ] [ transpose ?intB ?seed ] ]
+
+;; CANONS (Replacing PHI)
+;; Generates the seed, then generates a delayed, transformed version of the seed.
+rule [ CANON ?delay ?seed ] [ sim [ ?seed ] [ seq [ wait ?delay ] ?seed ] ]
+rule [ CANON-TRANS ?delay ?interval ?seed ] [ sim [ ?seed ] [ seq [ wait ?delay ] [ transpose ?interval ?seed ] ] ]
+rule [ CANON-INV ?delay ?seed ] [ sim [ ?seed ] [ seq [ wait ?delay ] [ invert ?seed ] ] ]
+
+;; KESTREL (K) - The Envelope Ghost
+;; Note: K is completely unneeded! Bogu's SWEEP command natively measures 
+;; the length of its target AST block and locks the control envelope to it.
+;; Example: [ sweep flt 20 100 [ seq q c4 d4 e4 ] ]
+
+;; Musical Song Forms
+rule [ AABA ?a ?b ] [ ?a ?a ?b ?a ]
+rule [ ABAC ?a ?b ?c ] [ ?a ?b ?a ?c ]
+
+;; Contrapuntal transformations
+;; (Plays the subject, then simultaneously plays the subject + inverted answer)
+rule [ FUGUE ?subject ] [ 
+  ?subject 
+  sim [ ?subject ] [ transpose 7 [ invert [ ?subject ] ] ] 
+]
+
+;; -----------------------------------------------------------------------------
+;; 6. SYSTEM MACROS
+;; -----------------------------------------------------------------------------
+def rack-basic [ synth 1 sine synth 2 saw synth 3 pluck reboot ]
+def rack-orch  [ synth 1 strings synth 2 horns  synth 3 timpani reboot ]

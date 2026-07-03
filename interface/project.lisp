@@ -1,4 +1,4 @@
-;; project.lisp
+;; interface/project.lisp
 (in-package :bogu)
 
 (defun save (&optional filename)
@@ -24,8 +24,9 @@
                  (cmd (car parsed)))
             (cond 
               ((string= "%" line) (format out "~a~%" line))
+              ;; THE FIX: Added 'clear' and 'reset' to the ignore list!
               ((or (null parsed)
-                   (member cmd '(play save help vars where bogu-load load start-audio-engine)))
+                   (member cmd '(play save help vars where bogu-load load start-audio-engine clear reset)))
                nil)
               (t (format out "~a~%" line)))))))
     (format t "saved \"compositions/~a/~a.bogu\"~%" fname fname)))
@@ -89,7 +90,6 @@
                 while raw-line do
                   (let ((trimmed-line (strip-comments raw-line)))
                     (unless (string= trimmed-line "")
-                      ;; THE FIX: Ampersands removed!
                       (let* ((separator " "))
                         (setf input-string (concatenate 'string input-string separator trimmed-line))
                         (when (= (count #\[ input-string) (count #\] input-string))

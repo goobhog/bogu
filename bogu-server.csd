@@ -7,6 +7,7 @@ sr = 44100
 ksmps = 128
 nchnls = 2
 0dbfs = 1.0
+
 ga_master_L init 0
 ga_master_R init 0
 ga_rvb_L init 0
@@ -102,11 +103,12 @@ kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
 kflt_sm portk kflt, 0.05
 
-asig_raw poscil iamp, icps, 2  
+asig_raw pluck iamp, icps, icps, 2, 1  
 
-asig = asig_raw  
+kcutoff = cpsoct((kflt_sm * 10) + 4)
+asig moogladder asig_raw, kcutoff, 0.25  
 
-ares linen asig, 0.03, p3, 0.05
+ares linen asig, 0.01, p3, 0.1
 
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
@@ -135,12 +137,11 @@ kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
 kflt_sm portk kflt, 0.05
 
-asig_raw pluck iamp, icps, icps, 2, 1  
+asig_raw poscil iamp, icps, 2  
 
-kcutoff = cpsoct((kflt_sm * 10) + 4)
-asig moogladder asig_raw, kcutoff, 0.25  
+asig = asig_raw  
 
-ares linen asig, 0.01, p3, 0.1
+ares linen asig, 0.03, p3, 0.05
 
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL
@@ -545,10 +546,14 @@ vincr ga_rvb_L, aL * krvb_sm
 vincr ga_rvb_R, aR * krvb_sm
 endin
 
+
+
 instr 97 ; SOUNDFONT BUS
 aL, aR fluidOut gieng
 vincr ga_master_L, aL
 vincr ga_master_R, aR
+vincr ga_rvb_L, aL * 0.20
+vincr ga_rvb_R, aR * 0.20
 endin
 
 instr 98 ; STEREO REVERB
@@ -576,15 +581,16 @@ istart = p6
 iend = p7
 kval linseg istart, p3, iend
 if iparam == 1 then
-chnset kval, sprintf("vol_%d", itrack)
+  chnset kval, sprintf("vol_%d", itrack)
 elseif iparam == 2 then
-chnset kval, sprintf("pan_%d", itrack)
+  chnset kval, sprintf("pan_%d", itrack)
 elseif iparam == 3 then
-chnset kval, sprintf("rvb_%d", itrack)
+  chnset kval, sprintf("rvb_%d", itrack)
 elseif iparam == 4 then
-chnset kval, sprintf("flt_%d", itrack)
+  chnset kval, sprintf("flt_%d", itrack)
 endif
 endin
+
 </CsInstruments>
 <CsScore>
 f 2 0 4096 10 1

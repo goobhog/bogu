@@ -1,17 +1,17 @@
 ;; stdlib/music-math.lisp
 (in-package :bogu)
 
-(defparameter *notes* '((b# . 0) (c . 0)
-    (c# . 1) (db . 1)
+(defparameter *notes* '((c . 0) (b# . 0)
+    (db . 1) (c# . 1)
     (d . 2)
-    (d# . 3) (eb . 3)
+    (eb . 3) (d# . 3)
     (e . 4) (fb . 4)
-    (e# . 5) (f . 5)
-    (f# . 6) (gb . 6)
+    (f . 5) (e# . 5)
+    (gb . 6) (f# . 6)
     (g . 7)
-    (g# . 8) (ab . 8)
+    (ab . 8) (g# . 8)
     (a . 9)
-    (a# . 10) (bb . 10)
+    (bb . 10) (a# . 10)
     (b . 11) (cb . 11)))
 
 (defparameter *scale-intervals*

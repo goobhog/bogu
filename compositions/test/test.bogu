@@ -1,0 +1,106 @@
+;; ==========================================================
+;; TITLE: The Phoenix Fugue in C Minor
+;; DURATION: ~1m 25s (128 beats @ 90 BPM)
+;; ==========================================================
+
+;; 1. HARDWARE & MIXER INITIALIZATION
+;; We load 3 synth cartridges and set their spatial mix
+rack-basic
+bpm 90
+key c minor
+
+i 1 vol 75 pan 20 reverb 40 flt 80
+i 2 vol 75 pan 80 reverb 40 flt 80
+i 3 vol 90 pan 50 reverb 30 flt 30
+
+;; ==========================================================
+;; 2. THE MUSICAL DNA (Pure Data)
+;; ==========================================================
+
+;; The Subject (8 Beats)
+;; We define Rhythm and Pitch orthogonally, then ZIP them.
+def sub-rhythm [ beats e e q   e e q   e e e e   h ]
+def sub-pitch  [ c4 d4 eb4 f4 g4 c5 b4 c5 d5 g4 c4 ]
+def subject    [ zip [ sub-rhythm ] [ sub-pitch ] ]
+
+;; The Countersubject (8 Beats)
+;; A contrasting, nervous, staccato figure.
+def c-sub [
+  staccato 40 [
+    seq e c5 g4 eb4 c4 d4 g3 b3 d4
+    seq e f4 d4 b3 g3 
+    seq q c4 c4
+  ]
+]
+
+;; The Episode (8 Beats)
+;; A fluid, aleatoric walk through the C Minor pentatonic scale.
+def c-min-pool [ c4 eb4 f4 g4 bb4 c5 d5 ]
+def episode    [ walk 16 e [ c-min-pool ] ]
+
+;; The Pedal Chords (16 Beats)
+;; Massive vertical stacks for the climax.
+def pedal-chords [ 
+  [ poly w c3 eb3 g3 ]
+  [ poly w f2 ab2 c3 ]
+  [ poly w g2 b2 d3 ]
+  [ poly w c2 eb2 g2 ]
+]
+
+;; ==========================================================
+;; 3. THE ARCHITECTURAL BLOCKS
+;; ==========================================================
+
+;; A. THE EXPOSITION (32 Beats)
+;; Voices enter symmetrically. V2 enters transposed by a 5th (7 semitones).
+def exposition [
+  sim
+    [ i 1 subject c-sub episode episode ]
+    [ i 2 wait 8 transpose 7 [ subject c-sub episode ] ]
+    [ i 3 wait 16 transpose -12 [ subject c-sub ] ]
+]
+
+;; B. THE DEVELOPMENT (32 Beats)
+;; Deriving entirely new forms using Tree Transformers and Combinators.
+def dev-subject [ invert [ subject ] ]
+
+def development [
+  sim
+    ;; V1: Inverts the subject, then augments it to half-speed (16 beats)
+    [ i 1 dev-subject augment 2.0 [ dev-subject ] wait 8 ]
+    
+    ;; V2: The Phoenix Combinator creates a delayed, transposed canon of the Episode
+    ;; Syntax: [ composer PHI rhythm-delay transformer-AST target-AST ]
+    [ i 2 wait 8 canon-trans 4.0 7 [ rpt 2 [ episode ] ] wait 4 ]
+    
+    ;; V3: A deep, slow, augmented statement of the original subject
+    [ i 3 wait 16 augment 2.0 [ transpose -12 [ subject ] ] ]
+]
+
+;; C. THE RECAPITULATION (32 Beats)
+;; The triumphant return, heavy polyphonic strikes.
+def recapitulation [
+  sim
+    [ i 1 transpose 12 [ subject c-sub subject c-sub ] ]
+    [ i 2 transpose 7  [ c-sub subject c-sub subject ] ]
+    [ i 3 transpose -12 [ rpt 2 [ pedal-chords ] ] ]
+]
+
+;; D. THE CODA (32 Beats)
+;; The machine winds down. Ghostly sweeping envelopes pull the filters shut.
+def coda [
+  sim
+    [ i 1 sweep flt 100 0 [ walk 64 e [ c-min-pool ] ] ]
+    [ i 2 sweep flt 100 0 [ walk 32 q [ c-min-pool ] ] ]
+    [ i 3 sweep vol  90 0 [ cell 32 [ rpt 8 [ seq w c2 ] ] ] ]
+]
+
+;; ==========================================================
+;; 4. THE MASTER TIMELINE
+;; ==========================================================
+;; We evaluate the entire sequence chronologically.
+
+exposition
+development
+recapitulation
+coda
