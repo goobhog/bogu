@@ -5,8 +5,8 @@
   "Dynamically generates the Bogu user manual based on the *command-dictionary*."
   (if target
       ;; 1. Specific Command Help (e.g., [ help choose ])
-      ;; THE FIX: 'target' is already a symbol or string, no need for (car target)
-      (let* ((sym (if (symbolp target) target (intern (string-upcase (string target)))))
+      (let* ((raw-sym (if (listp target) (car target) target))
+             (sym (if (symbolp raw-sym) raw-sym (intern (string-upcase (string raw-sym)))))
              (entry (gethash sym *command-dictionary*)))
         (if entry
             (progn

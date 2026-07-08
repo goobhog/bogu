@@ -87,17 +87,33 @@
   "Checks if a symbol is a structural command that should force a boundary.
    Notes, Rests, AND Rhythms are deliberately EXCLUDED."
   (and (symbolp token)
-       (not (rtm token)) ; <--- THE FIX: Rhythms are pure data, never commands!
+       (not (rtm token)) ; Rhythms are pure data, never commands!
        (or (gethash token *command-dictionary*)
            (gethash token *rewrite-rules*))))
 
 (defun parse-bogu-tokens (tokens &optional current-cmd ast)
-  "Phase 2: Arity-Aware Parser. Intelligently groups symbols based on their command signatures."
+  "Arity-Aware Parser. Intelligently groups symbols based on their command signatures."
   (if (null tokens)
       (reverse (if current-cmd (cons (reverse current-cmd) ast) ast))
       (let ((token (car tokens)))
         (cond
-          ;; 1. Bracket blocks (Recursive execution boundary)
+          ;; 1. Smart Boundary Detection (MOVED ABOVE BRACKET LOGIC)
+          ;; Split if the current command is FULL, OR if the token is a known command 
+          ;; AND the current command has already satisfied its minimum required arity.
+          ((and current-cmd 
+                (let* ((rev-cmd (reverse current-cmd))
+                       (cmd-sym (car rev-cmd)))
+                  (or (cmd-is-full-p rev-cmd token)
+                      (and (is-bogu-command-p token)
+                           (cmd-min-satisfied-p rev-cmd)
+                           (not (member cmd-sym '(HELP VARS SAVE LOAD)))))))
+           ;; THE FIX: Split the AST and leave 'token' in the stream for the next recursion pass.
+           ;; This prevents greedy commands from accidentally eating adjacent bracket blocks!
+           (parse-bogu-tokens tokens
+                              nil
+                              (cons (reverse current-cmd) ast)))
+                              
+          ;; 2. Bracket blocks (Recursive execution boundary)
           ((listp token)
            (let* ((parsed-sub (parse-bogu-tokens token))
                   (clean-sub (if (= (length parsed-sub) 1) (car parsed-sub) parsed-sub)))
@@ -105,17 +121,6 @@
                                 (cons clean-sub current-cmd)
                                 ast)))
                                 
-          ;; 2. Smart Boundary Detection
-          ;; Split if the current command is FULL, OR if the token is a known command 
-          ;; AND the current command has already satisfied its minimum required arity.
-          ((and current-cmd 
-                (or (cmd-is-full-p (reverse current-cmd) token)
-                    (and (is-bogu-command-p token)
-                         (cmd-min-satisfied-p (reverse current-cmd)))))
-           (parse-bogu-tokens (cdr tokens)
-                              (list token)
-                              (cons (reverse current-cmd) ast)))
-                              
           ;; 3. Argument Accumulation
           (t
            (parse-bogu-tokens (cdr tokens)

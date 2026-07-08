@@ -62,40 +62,66 @@
 	((eq 'tq rval) (/ 0.5 5.0))
 	((eq 'hq rval) (/ 8.0 5.0))))
 
+;; --- DIATONIC HELPER FUNCTIONS FOR 'INVERT' ---
+
+(defun get-scale-pitches (key-list)
+  "Returns the absolute pitch classes (0-11) for a given key."
+  (when key-list
+    (let* ((root-str (string (car key-list)))
+           (scale-str (string (cadr key-list)))
+           (root-assoc (find-if (lambda (x) (string-equal (string (car x)) root-str)) *notes*))
+           (intervals-assoc (find-if (lambda (x) (string-equal (string (car x)) scale-str)) *scale-intervals*)))
+      (when (and root-assoc intervals-assoc)
+        (let ((root-pitch (round (cdr root-assoc)))
+              (intervals (cdr intervals-assoc)))
+          (mapcar (lambda (x) (mod (+ root-pitch x) 12)) intervals))))))
+
+(defun pitch-to-diatonic-index (pitch-sym octave scale-pitches)
+  "Converts a pitch and octave to a continuous diatonic index (0 = Root Octave 0)."
+  (let* ((pc-assoc (assoc pitch-sym *notes*)))
+    (when pc-assoc
+      (let* ((pc (cdr pc-assoc))
+             (degree (position pc scale-pitches)))
+        (if degree
+            (+ (* octave (length scale-pitches)) degree)
+            nil)))))
+
+(defun diatonic-index-to-pitch (index scale-pitches)
+  "Converts a continuous diatonic index back to a pitch and octave."
+  (let* ((scale-len (length scale-pitches))
+         (octave (floor index scale-len))
+         (degree (mod index scale-len))
+         (pc (nth degree scale-pitches)))
+    (values (aref *pc-to-note* pc) octave)))
+
+;; --- DIATONIC TRANSPOSITION LAYER ---
+
 (defun calculate-diatonic-pitch (base-pitch ast-transpose trk)
   "Applies Track Key and Transposition rules to a base pitch, returning (VALUES pitch octave)."
   (let* ((trk-key (track-key trk))
          (trk-transpose (track-transpose-offset trk))
          (total-transpose (+ ast-transpose trk-transpose))
-         ;; THE FIX: Safely default to Chromatic Transposition if there is no Key!
+         ;; Safely default to Chromatic Transposition if there is no Key!
          (transposed-pitch (+ base-pitch total-transpose))) 
 
-    ;; Run your Diatonic Delta Math here if a key exists
+    ;; Diatonic Delta Math
     (when (and trk-key (not (= total-transpose 0)))
-      (let* ((root-str (string (car trk-key)))
-             (scale-str (string (cadr trk-key)))
-             (root-assoc (find-if (lambda (x) (string-equal (string (car x)) root-str)) *notes*))
-             (intervals-assoc (find-if (lambda (x) (string-equal (string (car x)) scale-str)) *scale-intervals*)))
-             
-        (when (and root-assoc intervals-assoc)
-          (let* ((root-pitch (round (cdr root-assoc)))
-                 (intervals (cdr intervals-assoc))
-                 (scale-pitches (mapcar (lambda (x) (mod (+ root-pitch x) 12)) intervals))
-                 (normalized-pitch (mod (round base-pitch) 12))
-                 (degree (position normalized-pitch scale-pitches)))
-                 
-            (if degree
-                (let* ((new-degree (+ degree total-transpose))
-                       (octave-shift (floor new-degree (length scale-pitches)))
-                       (wrapped-degree (mod new-degree (length scale-pitches)))
-                       (original-absolute (nth degree scale-pitches))
-                       (new-absolute (nth wrapped-degree scale-pitches))
-                       (total-new-absolute (+ new-absolute (* octave-shift 12)))
-                       (delta (- total-new-absolute original-absolute)))
-                  ;; OVERRIDE with Diatonic Math!
-                  (setf transposed-pitch (+ base-pitch delta)))
-                ;; Note isn't in scale? The chromatic fallback is already applied!
-                )))))
+      (let* ((scale-pitches (get-scale-pitches trk-key)))
+        (when scale-pitches
+          (let ((normalized-pitch (mod (round base-pitch) 12)))
+            (let ((degree (position normalized-pitch scale-pitches)))
+              (if degree
+                  (let* ((new-degree (+ degree total-transpose))
+                         (octave-shift (floor new-degree (length scale-pitches)))
+                         (wrapped-degree (mod new-degree (length scale-pitches)))
+                         (original-absolute (nth degree scale-pitches))
+                         (new-absolute (nth wrapped-degree scale-pitches))
+                         (total-new-absolute (+ new-absolute (* octave-shift 12)))
+                         (delta (- total-new-absolute original-absolute)))
+                    ;; OVERRIDE with Diatonic Math
+                    (setf transposed-pitch (+ base-pitch delta)))
+                  ;; Note isn't in scale? The chromatic fallback is already applied!
+                  ))))))
 
     ;; Calculate Octave wrapping
     (let ((new-pitch transposed-pitch)
@@ -112,7 +138,6 @@
                append (loop for octave in octaves
                             for func-name = (intern (string-upcase (format nil "~a~a" pitch octave)))
                             collect `(defun ,func-name (rval)
-                                       ;; The Correct Order: Pitch, Octave, Rhythm
                                        (schedule-note ',pitch ,octave rval)))))))
 
 (generate-notes (a a# bb b cb b# c c# db d d# eb e fb e# f f# gb g g# ab)

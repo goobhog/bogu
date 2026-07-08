@@ -78,6 +78,18 @@
          (tokens (lex-bogu-string raw-str))
          (ast (parse-bogu-tokens tokens)))
     (assert-equal '((SARP ST W MY-ARP)) ast "Parser should group variable arguments without shattering the command"))
+
+  (format t "~%--- 1b. Arity-Aware Parser Bounds ---~%")
+  (let* ((tokens (lex-bogu-string "choose 0.5 c4 choose 0.2 c4 g4"))
+         (ast (parse-bogu-tokens tokens)))
+    ;; CHOOSE takes (:number :ast :ast-optional). 
+    ;; The parser should cleanly cut the first one short, but let the second one eat both AST blocks.
+    (assert-equal '((CHOOSE 0.5 C4) (CHOOSE 0.2 C4 G4)) ast "PARSER: Greedily consumes optionals unless cleanly interrupted by a known command boundary"))
+  
+  (let* ((tokens2 (lex-bogu-string "seq q c4 e e4 s g4"))
+         (ast2 (parse-bogu-tokens tokens2)))
+    ;; The rhythms (q, e, s) should NOT trigger command boundaries.
+    (assert-equal '((SEQ Q C4 E E4 S G4)) ast2 "PARSER: Excludes rhythms from command boundary detection, safely treating them as pure data"))
   
   ;; ---------------------------------------------------------
   ;; 2. LOGIC, VARIABLES, & TURING COMPLETENESS
@@ -180,13 +192,23 @@
     (assert-equal '(0.5) (pluck :dur stac-seq) "STACCATO perfectly halves absolute audio duration")
     (assert-equal '(1.0) (pluck :written-dur stac-seq) "STACCATO preserves original sequencer rhythm"))
 
-    (let* ((inv-seq (execute-ast '((INVERT (SEQ C4 E4 G4)))))
+  (let* ((inv-seq (execute-ast '((INVERT (SEQ C4 E4 G4)))))
          (aug-seq (execute-ast '((AUGMENT 2.0 (SEQ Q C4))))))
     
     (assert-equal '(C AB F) (pluck :pitch-symbol inv-seq) "INVERT symmetrically reflects pitches around the first note (C -> C, E -> Ab, G -> F)")
     (assert-equal '(2.0) (pluck :written-dur aug-seq) "AUGMENT scales rhythmic written duration flawlessly")
     (assert-equal '(2.0) (pluck :dur aug-seq) "AUGMENT scales absolute acoustic duration flawlessly"))
 
+  (format t "~%--- 5b. Diatonic Inversion (The Scale-Aware Mirror) ---~%")
+  (reset-bogu)
+  (execute-node '(KEY C MAJOR))
+  (let* ((diatonic-inv (execute-ast '((INVERT (SEQ E4 G4 A4))))))
+    ;; Axis is E4 (Index 2 in C Major)
+    ;; G4 (+2 diatonic steps). A4 (+3 diatonic steps).
+    ;; Reflected: E4 - 2 steps = C4. E4 - 3 steps = B3.
+    (assert-equal '(E C B) (pluck :pitch-symbol diatonic-inv) "INVERT: Diatonically reflects pitches across scale degrees when a KEY is active")
+    (assert-equal '(4 4 3) (pluck :octave diatonic-inv) "INVERT: Wraps octaves accurately during diatonic reflection"))
+  
   ;; ---------------------------------------------------------
   ;; 6. PROBABILISTIC & GENERATIVE
   ;; ---------------------------------------------------------
@@ -247,6 +269,16 @@
     (assert-equal 4 (length map-ast) "MAP-CONTROL generates exactly one control event per child note")
     (assert-equal '(0.0 1.0 2.0 3.0) (pluck :time map-ast) "MAP-CONTROL spreads envelopes evenly across the target duration")
     (assert-equal :control (getf (car map-ast) :type) "MAP-CONTROL strictly outputs pure control data"))
+
+  (format t "~%--- 7b. Time-Shifting Combinatoric Control Envelopes ---~%")
+  (reset-bogu)
+  ;; THE FIX: Ensure sequence length is exactly 2.0 to match RPT math shift assertion. (Changed SEQ H to SEQ Q).
+  (let* ((rpt-sweep (execute-ast '((RPT 2 (SWEEP FLT 0 100 (SEQ Q C4 D4))))))
+         (controls (remove-if-not (lambda (e) (eq (getf e :type) :control)) rpt-sweep))
+         (notes (remove-if-not (lambda (e) (eq (getf e :type) :note)) rpt-sweep)))
+    (assert-equal 2 (length controls) "RPT: Successfully duplicates nested pure control envelopes")
+    (assert-equal '(0.0 2.0) (pluck :time controls) "RPT: Accurately shifts absolute timeline of cloned control events")
+    (assert-equal '(0.0 1.0 2.0 3.0) (pluck :time notes) "RPT: Accurately shifts nested audio child events in tandem"))
   
   ;; ---------------------------------------------------------
   ;; 8. SYSTEM STATE & LIVE-LOOP REGISTRY
@@ -348,6 +380,18 @@
     
     (assert-equal '(C E C AB) (pluck :pitch-symbol rule-res) "L-System custom RULE isolates variables, expands, and evaluates recursively")
     (assert-equal '(C G C) (pluck :pitch-symbol multi-var-rule) "L-System securely handles multi-variable binding (?x, ?y)"))
+
+  (format t "~%--- 12b. L-System Evolution (Cellular Automata) ---~%")
+  (reset-bogu)
+  ;; Define Algae-style growth rules
+  (execute-node '(RULE (C4) (C4 G4)))
+  (execute-node '(RULE (G4) (C4)))
+  (let ((evolved (execute-ast '((EVOLVE 3 (C4))))))
+    ;; Gen 1: C4 G4
+    ;; Gen 2: C4 G4 C4
+    ;; Gen 3: C4 G4 C4 C4 G4
+    (assert-equal '(C G C C G) (pluck :pitch-symbol evolved) "EVOLVE: Recursively applies L-System rules N times before yielding audio data")
+    (assert-equal 5 (length evolved) "EVOLVE: AST successfully grows exponentially through generations"))
   
   ;; ---------------------------------------------------------
   ;; 13. TRACK STATE, SYNC & TIMELINE OPERATIONS

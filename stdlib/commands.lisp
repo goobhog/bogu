@@ -1,4 +1,4 @@
-;;stdlib/commands.lisp
+;; stdlib/commands.lisp
 
 (in-package :bogu)
 
@@ -7,39 +7,36 @@
 ;; =============================================================================
 
 (def-bogu-cmd SEQ (:rhythm-optional &rest :any) (args)
-  "Generates a sequential list of events. If rhythm is provided, it dictates the step size."
+  "Generates a sequential list of events. If rhythm is provided, it scales each step to fit exactly into that rhythm."
   (let* ((expanded (expand-vars args))
          (rhythm (if (and (atom (car expanded)) (numberp (rtm (car expanded)))) (rtm (car expanded)) nil))
          (nodes (smart-unwrap (if rhythm (cdr expanded) expanded)))
          (master-events nil)
          (local-cursor 0.0))
-    (dolist (node nodes)
-      (let* ((evaluated-block (execute-ast (list node)))
-             (block-len 0.0)
-             ;; Check if this step is just a single note, or a complex generated block
-             (is-single (<= (length (remove-if (lambda (x) (not (eq (getf x :type) :note))) evaluated-block)) 1)))
-        
-        (dolist (e evaluated-block)
-          (let ((new-e (copy-list e)))
-            ;; ONLY overwrite the duration if it's a simple single note!
-            ;; Otherwise, let the complex block keep its internal rhythm.
-            (when (and rhythm is-single)
-              (setf (getf new-e :written-dur) rhythm)
-              (when (getf new-e :dur) (setf (getf new-e :dur) rhythm)))
-            
-            ;; Place the event on the timeline relative to the cursor
-            (setf (getf new-e :time) (+ local-cursor (getf e :time)))
-            (push new-e master-events)
-            
-            ;; Measure the true footprint of the notes (The Critical Fix Area)
-            (setf block-len (max block-len (+ (getf e :time) 
-                                              (or (getf new-e :written-dur) 
-                                                  (getf new-e :dur) 
-                                                  0.0))))))
-            
-        ;; Advance the cursor! 
-        (incf local-cursor (if rhythm rhythm block-len))))
-    (reverse master-events)))
+    
+    (let* ((nodes-list (if (listp nodes) nodes (list nodes)))
+           (evaluated-stream (execute-ast nodes-list)))
+      
+      (if (null rhythm)
+          evaluated-stream
+          (let ((groups (group-events-by-time evaluated-stream)))
+            (dolist (group groups)
+              (let ((block-len 0.0))
+                (dolist (e group)
+                  (setf block-len (max block-len (or (getf e :written-dur) 0.0))))
+                (when (<= block-len 0.0) (setf block-len 1.0))
+                
+                (let ((scale-factor (/ rhythm block-len)))
+                  (dolist (e group)
+                    (let ((new-e (copy-list e)))
+                      (setf (getf new-e :time) local-cursor)
+                      (when (getf new-e :written-dur)
+                        (setf (getf new-e :written-dur) (* (getf new-e :written-dur) scale-factor)))
+                      (when (getf new-e :dur)
+                        (setf (getf new-e :dur) (* (getf new-e :dur) scale-factor)))
+                      (push new-e master-events))))
+                (incf local-cursor rhythm)))
+            (reverse master-events))))))
 
 (def-bogu-cmd POLY (:rhythm-optional &rest :any) (args)
   "Simultaneous evaluation. Geometrically collapses all elements vertically to local time 0.0."
@@ -53,15 +50,9 @@
         (dolist (e evaluated-block)
           (let ((new-e (copy-list e)))
             (when rhythm 
-              ;; 1. Stretch the sequencer timeline footprint
               (setf (getf new-e :written-dur) rhythm)
-              ;; 2. Stretch the acoustic synth gate physics!
               (when (getf new-e :dur) (setf (getf new-e :dur) rhythm)))
-            
-            ;; THE PHILOSOPHICAL FIX:
-            ;; Project everything onto the Y-axis. Destroy the X-axis (time).
             (setf (getf new-e :time) 0.0) 
-            
             (push new-e master-events)))))
     (reverse master-events)))
 
@@ -70,10 +61,8 @@
   (let* ((expanded (expand-vars args))
          (master-events nil))
     (dolist (block expanded)
-      ;; Safely evaluate each block in absolute isolation
       (let ((evaluated-block (execute-ast (list block))))
         (setf master-events (append master-events (mapcar #'copy-list evaluated-block)))))
-    ;; Mathematically sort the combined streams chronologically before returning!
     (stable-sort master-events #'< :key (lambda (x) (getf x :time)))))
 
 (def-bogu-cmd CELL (:rhythm :ast) (args)
@@ -84,23 +73,14 @@
          (evaluated-block (execute-ast (list block)))
          (master-events nil))
     (dolist (e evaluated-block)
-      ;; Only keep events that start BEFORE the cell dies
       (when (< (getf e :time) cell-duration)
         (let ((new-e (copy-list e)))
-          
-          ;; Ensure the note has an explicit acoustic duration to manipulate
           (unless (getf new-e :dur) (setf (getf new-e :dur) (or (getf new-e :written-dur) 0.1)))
-
-          ;; Mathematically chop the Grid Footprint
           (when (> (+ (getf new-e :time) (getf new-e :written-dur)) cell-duration)
             (setf (getf new-e :written-dur) (max 0.0 (- cell-duration (getf new-e :time)))))
-            
-          ;; Mathematically chop the Acoustic Physics so the synth cuts off
           (when (> (+ (getf new-e :time) (getf new-e :dur)) cell-duration)
             (setf (getf new-e :dur) (max 0.0 (- cell-duration (getf new-e :time)))))
-
           (push new-e master-events))))
-          
     (push (list :type :note :pitch-symbol 'RST :time cell-duration :written-dur 0.0) master-events)
     (reverse master-events)))
 
@@ -136,7 +116,6 @@
 ;; =============================================================================
 
 (def-bogu-cmd SARP (:rhythm :rhythm &rest :any) (args)
-  "Sustained arpeggio. Plays through the provided pool EXACTLY ONCE at step r."
   (let* ((expanded (expand-vars args))
          (r (rtm (car expanded)))   
          (s (rtm (cadr expanded)))  
@@ -159,7 +138,6 @@
     (reverse master-events)))
 
 (def-bogu-cmd FLUID (:number :rhythm &rest :any) (args)
-  "Generates an aleatoric cloud of notes over a specific duration (r)."
   (let* ((expanded (expand-vars args))
          (density (if (numberp (car expanded)) (car expanded) (parse-integer (string (car expanded)))))
          (r (rtm (cadr expanded)))
@@ -184,7 +162,6 @@
     (reverse master-events)))
 
 (def-bogu-cmd WALK (:number :rhythm &rest :any) (args)
-  "Generates a random walk through a sequence of notes."
   (let* ((expanded (expand-vars args))
          (steps (if (numberp (car expanded)) (car expanded) (parse-integer (string (car expanded)))))
          (r (rtm (cadr expanded)))
@@ -208,7 +185,6 @@
     (reverse master-events)))
 
 (def-bogu-cmd CHANCE (:number :ast) (args)
-  "Usage: (CHANCE 0.5 (SEQ C4 E4 G4)). Keeps elements based on probability."
   (let* ((expanded (expand-vars args))
          (probability (car expanded))
          (music-block (cadr expanded))
@@ -220,7 +196,6 @@
     (reverse filtered-stream)))
 
 (def-bogu-cmd CHOOSE (:number :ast :ast-optional) (args)
-  "Usage: (CHOOSE 0.6 BlockA BlockB). Picks BlockA 60% of the time, else BlockB."
   (let* ((expanded (expand-vars args))
          (probability (car expanded))
          (block-a (cadr expanded))
@@ -230,7 +205,6 @@
         (if block-b (execute-ast (list block-b)) nil))))
 
 (def-bogu-cmd BEATS (&rest :any) (args)
-  "Generates a stream of pure timing data from raw rhythm symbols."
   (let* ((expanded (expand-vars args))
          (rhythms (smart-unwrap expanded))
          (r-list (if (listp rhythms) rhythms (list rhythms)))
@@ -243,10 +217,8 @@
     (reverse master-events)))
 
 (def-bogu-cmd TREAD (:number :ast :ast) (args)
-  "Deterministic walker. Syntax: (TREAD start-index [intervals] [pool])"
   (let* ((expanded (expand-vars args))
          (start-idx (car expanded))
-         ;; THE FIX: Flatten the parsed array so ((1) (2) (-1)) safely becomes (1 2 -1)
          (intervals (flatten (cadr expanded))) 
          (int-list (if (listp intervals) intervals (list intervals)))
          (pool (smart-unwrap (caddr expanded)))
@@ -254,8 +226,6 @@
          (master-events nil)
          (current-idx start-idx)
          (local-cursor 0.0))
-         
-    ;; 1. Push the starting note first
     (let* ((first-sym (nth (mod current-idx pool-len) pool))
            (first-node (execute-ast (list first-sym))))
       (dolist (e first-node)
@@ -265,8 +235,6 @@
           (setf (getf new-e :dur) 1.0)
           (push new-e master-events)))
       (incf local-cursor 1.0))
-      
-    ;; 2. Now walk the intervals
     (dolist (step int-list)
       (incf current-idx (if (numberp step) step (parse-integer (string step))))
       (let* ((pitch-sym (nth (mod current-idx pool-len) pool))
@@ -285,7 +253,6 @@
 ;; =============================================================================
 
 (def-bogu-cmd AUGMENT (:number :ast) (args)
-  "Tree transformer: Multiplies the time and duration of an entire block by a factor."
   (let* ((expanded (expand-vars args))
          (factor (float (car expanded)))
          (child-block (execute-ast (cdr expanded)))
@@ -301,11 +268,10 @@
     (reverse master-events)))
 
 (def-bogu-cmd TRANSPOSE (:number :ast) (args)
-  "Maps over an evaluated block and shifts the pitch symbols purely."
+  "Tags nodes with a transpose offset. Handled Diatonically by the Committer if a KEY is set."
   (let* ((expanded (expand-vars args))
          (offset (if (numberp (car expanded)) (car expanded) (parse-integer (string (car expanded)))))
          (body (cdr expanded))
-         ;; THE FIX: Safe wrapper logic so it doesn't shatter when passed an un-wrapped command node
          (safe-body (if (and (listp body) (listp (car body))) body (list body)))
          (raw-events (execute-ast safe-body)))
     
@@ -321,50 +287,75 @@
 (defparameter *pc-to-note* #(C DB D EB E F GB G AB A BB B))
 
 (def-bogu-cmd INVERT (:ast) (args)
-  "Purely inverts the raw pitch symbols of a block around its first note, before diatonic math is applied."
+  "Inverts pitches. If a KEY is active on the track, inverts diatonically around scale degrees. Otherwise, chromatically."
   (let* ((expanded (expand-vars args))
          (block (car expanded))
          (evaluated-stream (execute-ast (list block)))
-         (first-note (find-if (lambda (x) (eq (getf x :type) :note)) evaluated-stream)))
+         (first-note (find-if (lambda (x) (eq (getf x :type) :note)) evaluated-stream))
+         (trk (get-current-track))
+         (scale-pitches (get-scale-pitches (track-key trk))))
     
     (if (null first-note)
         evaluated-stream 
         
-        (let* ((axis-sym (getf first-note :pitch-symbol))
-               (axis-oct (getf first-note :octave))
-               (axis-semitone (+ (* axis-oct 12) (cdr (assoc axis-sym *notes*)))))
-               
-          (mapcar (lambda (event)
-                    (if (eq (getf event :type) :note)
-                        (let* ((new-event (copy-list event))
-                               (sym (getf new-event :pitch-symbol))
-                               (oct (getf new-event :octave)))
-                          
-                          (unless (or (eq sym 'R) (eq sym 'RST))
-                            (let* ((current-semitone (+ (* oct 12) (cdr (assoc sym *notes*))))
-                                   (diff (- current-semitone axis-semitone))
-                                   (new-semitone (- axis-semitone diff))
-                                   (new-oct (floor new-semitone 12))
-                                   (new-pc (mod new-semitone 12))
-                                   ;; THE FIX: Canonical lookup guarantees C instead of B#
-                                   (new-sym (aref *pc-to-note* new-pc)))
-                              
-                              (setf (getf new-event :pitch-symbol) new-sym)
-                              (setf (getf new-event :octave) new-oct)))
-                          new-event)
-                        (copy-list event)))
-                  evaluated-stream)))))
+        (if scale-pitches
+            ;; --- 1. DIATONIC INVERSION ---
+            (let* ((axis-sym (getf first-note :pitch-symbol))
+                   (axis-oct (getf first-note :octave))
+                   (axis-idx (pitch-to-diatonic-index axis-sym axis-oct scale-pitches)))
+              (mapcar (lambda (event)
+                        (if (eq (getf event :type) :note)
+                            (let* ((new-event (copy-list event))
+                                   (sym (getf new-event :pitch-symbol))
+                                   (oct (getf new-event :octave)))
+                              (unless (or (eq sym 'R) (eq sym 'RST))
+                                (let ((curr-idx (pitch-to-diatonic-index sym oct scale-pitches)))
+                                  (if (and axis-idx curr-idx)
+                                      (let* ((diff (- curr-idx axis-idx))
+                                             (new-idx (- axis-idx diff)))
+                                        (multiple-value-bind (new-sym new-oct) (diatonic-index-to-pitch new-idx scale-pitches)
+                                          (setf (getf new-event :pitch-symbol) new-sym)
+                                          (setf (getf new-event :octave) new-oct)))
+                                      ;; Chromatic Fallback for out-of-scale passing tones
+                                      (let* ((axis-st (+ (* axis-oct 12) (cdr (assoc axis-sym *notes*))))
+                                             (curr-st (+ (* oct 12) (cdr (assoc sym *notes*))))
+                                             (diff (- curr-st axis-st))
+                                             (new-st (- axis-st diff)))
+                                        (setf (getf new-event :pitch-symbol) (aref *pc-to-note* (mod new-st 12)))
+                                        (setf (getf new-event :octave) (floor new-st 12))))))
+                              new-event)
+                            (copy-list event)))
+                      evaluated-stream))
+            
+            ;; --- 2. CHROMATIC INVERSION (Original) ---
+            (let* ((axis-sym (getf first-note :pitch-symbol))
+                   (axis-oct (getf first-note :octave))
+                   (axis-semitone (+ (* axis-oct 12) (cdr (assoc axis-sym *notes*)))))
+              (mapcar (lambda (event)
+                        (if (eq (getf event :type) :note)
+                            (let* ((new-event (copy-list event))
+                                   (sym (getf new-event :pitch-symbol))
+                                   (oct (getf new-event :octave)))
+                              (unless (or (eq sym 'R) (eq sym 'RST))
+                                (let* ((current-semitone (+ (* oct 12) (cdr (assoc sym *notes*))))
+                                       (diff (- current-semitone axis-semitone))
+                                       (new-semitone (- axis-semitone diff))
+                                       (new-oct (floor new-semitone 12))
+                                       (new-pc (mod new-semitone 12))
+                                       (new-sym (aref *pc-to-note* new-pc)))
+                                  (setf (getf new-event :pitch-symbol) new-sym)
+                                  (setf (getf new-event :octave) new-oct)))
+                              new-event)
+                            (copy-list event)))
+                      evaluated-stream))))))
 
 (def-bogu-cmd RETRO (:ast) (args)
-  "Reverses the timeline of a block."
   (let* ((expanded (expand-vars args))
          (block (car expanded))
          (evaluated-stream (execute-ast (list block)))
          (max-time 0.0))
-         
     (dolist (e evaluated-stream)
        (setf max-time (max max-time (+ (getf e :time) (getf e :written-dur)))))
-       
     (stable-sort (mapcar (lambda (e)
                            (let ((new-e (copy-list e)))
                              (setf (getf new-e :time) (- max-time (+ (getf e :time) (getf e :written-dur))))
@@ -373,7 +364,6 @@
                  #'< :key (lambda (x) (getf x :time)))))
 
 (def-bogu-cmd RPT (:number :ast) (args)
-  "Data Loop. Evaluates the AST once, then pastes exact time-shifted copies."
   (let* ((expanded (expand-vars args))
          (iterations (car expanded))
          (body (cadr expanded))
@@ -381,10 +371,8 @@
          (master-events nil)
          (local-cursor 0.0)
          (blueprint-len 0.0))
-         
     (dolist (e blueprint-events)
       (setf blueprint-len (max blueprint-len (+ (getf e :time) (getf e :written-dur)))))
-        
     (dotimes (i iterations)
       (dolist (e blueprint-events)
         (let ((new-event (copy-list e)))
@@ -394,7 +382,6 @@
     (reverse master-events)))
 
 (def-bogu-cmd STACCATO (:number :ast) (args)
-  "Tree transformer: Shortens the absolute duration (:dur) of all child notes by a percentage, without altering their written rhythm."
   (let* ((expanded (expand-vars args))
          (percent (/ (float (car expanded)) 100.0))
          (child-block (execute-ast (cdr expanded)))
@@ -408,7 +395,6 @@
     (reverse master-events)))
 
 (def-bogu-cmd LOOP (:number :ast) (args)
-  "A Generative Loop that returns a massive list of un-shifted music data."
   (let* ((expanded (expand-vars args))
          (iterations (car expanded))
          (body (cadr expanded))
@@ -417,32 +403,61 @@
       (setf combined-result (append combined-result (execute-ast body))))
     combined-result))
 
-(def-bogu-cmd ZIP (:ast :ast) (args)
-  "Combinatoric zipper. Fuses Time from Block A with Pitch from Block B. Preserves Polyphonic Chords!"
+(def-bogu-cmd EVOLVE (:number :ast) (args)
+  "Applies all registered parameter-less L-System rules to the AST 'N' times, then evaluates."
   (let* ((expanded (expand-vars args))
-         (block-a (execute-ast (list (car expanded))))
-         (block-b (execute-ast (list (cadr expanded)))))
+         (generations (car expanded))
+         (seed (cadr expanded)))
+    (dotimes (i generations)
+      (setf seed (flatten (mapcar (lambda (sym)
+                                    (let ((rule (and (symbolp sym) (gethash sym *rewrite-rules*))))
+                                      (if (and rule (null (getf rule :vars)))
+                                          (getf rule :transform)
+                                          sym)))
+                                  seed))))
+    (execute-ast seed)))
 
-    (let* ((groups-a (group-events-by-time block-a))
-           (groups-b (group-events-by-time block-b))
-           (len-a (length groups-a))
-           (len-b (length groups-b))
-           (master-events nil))
-      
-      (when (and (> len-a 0) (> len-b 0))
-        (dotimes (i len-a)
-          (let* ((step-a (nth i groups-a))
-                 (rhythm-source (car step-a)) 
-                 (step-b (nth (mod i len-b) groups-b)))
-            
-            (dolist (event-b step-b)
-              (let ((new-event (copy-list event-b)))
+(def-bogu-cmd ZIP (&rest :any) (args)
+  "N-Dimensional Combinatoric Zipper.
+   Block 1: Rhythm (Time & Duration)
+   Block 2: Pitch (Pitch & Octave)
+   Block 3: Dynamics (Velocity)"
+  (let* ((expanded (expand-vars args))
+         (blocks (mapcar (lambda (b) (execute-ast (list b))) expanded))
+         (groups-list (mapcar #'group-events-by-time blocks))
+         (master-rhythm-groups (car groups-list))
+         (len-rhythm (length master-rhythm-groups))
+         (master-events nil))
+
+    (when (> len-rhythm 0)
+      (dotimes (i len-rhythm)
+        (let* ((step-rhythm (nth i master-rhythm-groups))
+               (rhythm-source (car step-rhythm))) 
+
+          (let* ((pitch-groups (if (> (length groups-list) 1) (nth 1 groups-list) master-rhythm-groups))
+                 (len-pitch (length pitch-groups))
+                 (step-pitch (if (> len-pitch 0) (nth (mod i len-pitch) pitch-groups) nil)))
+
+            (dolist (event-p step-pitch)
+              (let ((new-event (copy-list event-p)))
+                ;; 1. Inherit Time & Grid Duration
                 (setf (getf new-event :time) (getf rhythm-source :time))
-                (when (and (eq (getf rhythm-source :type) :note) (eq (getf event-b :type) :note))
+                (when (eq (getf rhythm-source :type) :note)
                   (setf (getf new-event :dur) (getf rhythm-source :dur))
                   (setf (getf new-event :written-dur) (getf rhythm-source :written-dur)))
-                (push new-event master-events))))))
-      (reverse master-events))))
+
+                ;; 2. Inherit Velocity if a 3rd block is present
+                (when (> (length groups-list) 2)
+                  (let* ((vel-groups (nth 2 groups-list))
+                         (len-vel (length vel-groups)))
+                    (when (> len-vel 0)
+                      (let* ((step-vel (nth (mod i len-vel) vel-groups))
+                             (vel-source (car step-vel)))
+                        (when (and vel-source (getf vel-source :vel))
+                          (setf (getf new-event :vel) (getf vel-source :vel)))))))
+
+                (push new-event master-events)))))))
+    (reverse master-events)))
 
 ;; =============================================================================
 ;; 4. LOGIC, STATE & VARIABLES
@@ -467,7 +482,6 @@
     nil))
 
 (def-bogu-cmd IF (:any :symbol :any :ast :ast-optional) (args)
-  "A lazy-evaluating conditional guard that prevents infinite recursion loops."
   (let* ((cond-args (subseq args 0 3))
          (expanded-cond (expand-vars cond-args))
          (val1 (car expanded-cond))
@@ -484,7 +498,6 @@
         (format t "~%[Logic Error] Invalid IF syntax.~%"))))
 
 (def-bogu-cmd CLEF (:symbol) (args)
-  "Sets the default starting clef for the active track (e.g., bass or treble)."
   (let* ((expanded (expand-vars args))
          (c (string-downcase (string (car expanded))))
          (trk (get-current-track)))
@@ -492,7 +505,6 @@
   nil)
 
 (def-bogu-cmd BREAK () (args)
-  "Forces a system break in the engraved LilyPond sheet music."
   (list (list :type :meta :subtype :line-break :time 0.0 :written-dur 0.0 :dur 0.0)))
 
 ;; =============================================================================
@@ -500,7 +512,6 @@
 ;; =============================================================================
 
 (defmacro def-mixer-cmd (name param-id)
-  "Safely generates pure static control data AND sends instant top-level initialization."
   `(def-bogu-cmd ,name (:number) (args)
      (let* ((expanded (expand-vars args))
             (val (/ (float (car expanded)) 100.0)))
@@ -512,13 +523,15 @@
 (def-mixer-cmd REVERB 3)
 (def-mixer-cmd FLT 4)
 
-(def-bogu-cmd SWEEP (:symbol :number :number :any-optional) (args)
-  "Generates pure dynamic control data strictly bound to the sequencer grid."
+(def-bogu-cmd SWEEP (:symbol :number :number &rest :any) (args)
   (let* ((expanded (expand-vars args))
          (param-input (car expanded))
          (start (/ (float (cadr expanded)) 100.0))
          (end (/ (float (caddr expanded)) 100.0))
-         (target (nth 3 expanded))
+         (raw-target (cdddr expanded))
+         ;; Extract target intelligently: ignore leading numbers if an AST is present
+         (clean-target (remove-if #'numberp raw-target))
+         (target (if clean-target clean-target raw-target))
          (param-str (string-upcase (string param-input)))
          (param-id (cond ((member param-str '("VOL" "V") :test #'string=) 1)
                          ((member param-str '("PAN" "P") :test #'string=) 2)
@@ -527,18 +540,15 @@
                          (t nil))))
     (if (null param-id)
         (progn (format t "~%[SWEEP ERROR] Unknown parameter '~A'. Use VOL, PAN, RVB, or FLT.~%" param-input) nil)
-        (if (and target (not (numberp target)))
-            ;; TARGET IS AN AST BLOCK: Intelligently wrap and measure it
-            (let* ((safe-target (if (and (listp target) (symbolp (car target))) (list target) target))
-                   (child-events (execute-ast safe-target))
+        (if (and target (not (and (= (length target) 1) (numberp (car target)))))
+            (let* ((child-events (execute-ast target))
                    (grid-len 0.0))
               (dolist (e child-events)
                 (setf grid-len (max grid-len (+ (getf e :time) (or (getf e :written-dur) 0.0)))))
               (cons (list :type :control :time 0.0 :written-dur grid-len :dur grid-len 
                           :param param-id :start start :end end :instr *current-instrument*)
                     child-events))
-            ;; TARGET IS A NUMBER OR NIL: Sweep "in place" for standard wait blocks
-            (let ((dur (if (numberp target) (float target) 4.0))) 
+            (let ((dur (if target (float (car target)) 4.0))) 
                (list (list :type :control :time 0.0 :written-dur 0.0 :dur dur 
                            :param param-id :start start :end end :instr *current-instrument*)))))))
 
@@ -550,12 +560,10 @@
   (reboot-audio-server))
 
 (def-bogu-cmd DELAY (:number-optional) (args)
-  "Pauses the Lisp thread. Useful for letting hardware boot up."
   (sleep (if args (car (expand-vars args)) 1.0))
   nil)
 
 (def-bogu-cmd LIVE-LOOP (:symbol :rhythm-optional :ast) (args)
-  "Auto-sizing live-loop. Safely monitors a state flag to avoid mutex deadlocks."
   (let* ((expanded (expand-vars args))
          (name (car expanded))
          (instr-id *current-instrument*)
@@ -616,7 +624,6 @@
     nil))
 
 (def-bogu-cmd STOP-LOOP (:symbol) (args)
-  "Stops active loops by removing their state flags, ensuring graceful exits."
   (let ((name (car (expand-vars args))))
     (if (eq name 'ALL)
         (progn
@@ -648,7 +655,6 @@
 ;; =============================================================================
 
 (defun clear-score-only ()
-  "Flushes the active composition timeline and signals loops to stop safely."
   (clrhash *live-loops*)   
   (clrhash *loop-threads*) 
   (setf *score* '())
@@ -657,21 +663,17 @@
   (format t "~%[SYSTEM] Score cleared. Live-loops signaled to terminate safely. Variables preserved.~%"))
 
 (def-bogu-cmd CLEAR () (args)
-  "Flushes the active composition timeline and stops all live loops."
   (clear-score-only)
   nil)
 
 (defun ensure-track (id)
-  "Retrieves a track by ID, initializing it if it doesn't exist yet."
   (or (gethash id *tracks*)
       (setf (gethash id *tracks*) (make-track :id id))))
 
 (defun get-current-track ()
-  "Retrieves the active track, initializing it if it doesn't exist yet."
   (ensure-track *current-instrument*))
 
 (defun clone-tracks-for-sandbox ()
-  "Creates a perfect copy of all track states but resets playheads and pending automations."
   (let ((new-ht (make-hash-table)))
     (maphash (lambda (k v)
                (setf (gethash k new-ht)
@@ -686,80 +688,42 @@
     new-ht))
 
 (defun current-time ()
-  "Returns the current playhead position for the active instrument."
   (track-playhead (get-current-track)))
 
 (defun set-current-time (time)
-  "Explicitly sets the playhead for the active instrument."
   (setf (track-playhead (get-current-track)) (float time)))
 
 (defun advance-time (amount)
-  "Moves the playhead forward ONLY for the active instrument."
   (incf (track-playhead (get-current-track)) (float amount)))
 
 (defun seek (beat)
-  "Teleports the playhead of the active instrument to an absolute beat."
   (let ((target-time (if (numberp beat) (float beat) (rtm beat))))
     (set-current-time target-time)
     (format t "~%[TIMELINE] Track ~A teleported to ~,3fs~%" *current-instrument* target-time)))
 
 (defun sync ()
-  "Finds the furthest playhead in the matrix and fast-forwards all tracks to catch up."
   (let ((max-time 0.0))
     (maphash (lambda (k trk) (setf max-time (max max-time (track-playhead trk)))) *tracks*)
     (maphash (lambda (k trk) (setf (track-playhead trk) max-time)) *tracks*)
     (format t "~%[TIMELINE] All tracks synchronized to ~,3fs~%" max-time)))
 
-(defun where ()
-  "Reports the current chronological position of all active track playheads."
-  (format t "~%--- [TIMELINE STATUS] ---~%")
-  (if (= (hash-table-count *tracks*) 0)
-      (format t " All tracks at: 0.0s (Master Start)~%")
-      (maphash (lambda (instr-id trk)
-                 (format t " Instrument ~2a : ~,3fs ~a~%" 
-                         instr-id 
-                         (track-playhead trk)
-                         (if (= instr-id *current-instrument*) "<-- (ACTIVE)" "")))
-               *tracks*))
-  (format t "-------------------------~%")
-  t)
-
 (defun del (n)
-  "Deletes the chronologically latest N events from the active track and rewinds the playhead."
   (let ((track-events nil)
         (other-events nil))
-    
     (dolist (event *score*)
       (if (= (getf event :instr) *current-instrument*)
           (push event track-events)
           (push event other-events)))
-          
     (setf track-events (sort track-events #'> :key (lambda (x) (getf x :time))))
     (setf track-events (nthcdr n track-events))
     (setf *score* (append track-events other-events))
-    
     (let ((new-time 0.0))
       (dolist (event track-events)
         (setf new-time (max new-time (+ (getf event :time) (getf event :dur)))))
-        
       (setf (track-playhead (get-current-track)) (float new-time))
       (format t "~%[TIMELINE] Rewound playhead. Deleted ~a events from Track ~a.~%" n *current-instrument*))))
 
-(defun vars (&optional show-all)
-  "Displays the current ledger of user-defined variables."
-  (format t "~%--- BOGU VARIABLES ---~%")
-  (if (= (hash-table-count *vars*) 0)
-      (format t " (No custom variables defined yet)~%")
-      (maphash (lambda (k v) (format t " ~a: ~a~%" k v)) *vars*))
-      
-  (when (eq show-all 'all)
-    (format t "~%--- STANDARD LIBRARY ---~%")
-    (maphash (lambda (k v) (format t " ~a: ~a~%" k v)) *stdlib-vars*))
-  (format t "----------------------~%~%")
-  t)
-
 (defun synth (slot-id template-name)
-  "Loads a synth template into a specific hardware rack slot."
   (let ((template (gethash template-name *synth-templates*)))
     (if template
         (progn
@@ -768,7 +732,6 @@
         (format t "~%[RACK ERROR] No synth template named ~A found in memory.~%" template-name))))
 
 (defun bpm (n)
-  "Sets beats per minute."
   (setf *bpm* '())
   (push "t" *bpm*)
   (push 0 *bpm*)
@@ -781,14 +744,15 @@
 
 (def-bogu-cmd BPM (:number) (args) (apply #'bpm (expand-vars args)) nil)
 (def-bogu-cmd PLAY (&rest :any) (args) (apply #'play (expand-vars args)) nil)
-(def-bogu-cmd SAVE (&rest :any) (args) (apply #'save (expand-vars args)) nil)
-(def-bogu-cmd VARS (&rest :any) (args) (apply #'vars (expand-vars args)) nil)
+(def-bogu-cmd SAVE (:symbol-optional) (args) (apply #'save args) nil)
+(def-bogu-cmd VARS (:symbol-optional) (args) (apply #'vars args) nil)
 (def-bogu-cmd WHERE (&rest :any) (args) (apply #'where (expand-vars args)) nil)
-(def-bogu-cmd HELP (&rest :any) (args) (apply #'help (expand-vars args)) nil)
+(def-bogu-cmd LOOPS (&rest :any) (args) (loops) nil) 
+(def-bogu-cmd HELP (:symbol-optional) (args) (apply #'help args) nil)
 (def-bogu-cmd RESET (&rest :any) (args) (apply #'reset (expand-vars args)) nil)
-(def-bogu-cmd LOAD (&rest :any) (args) (apply #'bogu-load (expand-vars args)) nil)
+(def-bogu-cmd LOAD (:symbol-optional) (args) (apply #'bogu-load args) nil)
 (def-bogu-cmd DEL (:number) (args) (apply #'del (expand-vars args)) nil)
 (def-bogu-cmd SEEK (:any) (args) (apply #'seek (expand-vars args)) nil)
 (def-bogu-cmd SYNC (&rest :any) (args) (apply #'sync (expand-vars args)) nil)
 (def-bogu-cmd BANG (&rest :any) (args) (apply #'bang (expand-vars args)) nil)
-(def-bogu-cmd SYNTH (:number :symbol) (args) (apply #'synth (expand-vars args)) nil)
+(def-bogu-cmd SYNTH (:number :symbol) (args) (apply #'synth args) nil)

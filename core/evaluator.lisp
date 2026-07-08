@@ -14,8 +14,8 @@
       (and (listp node) 
            (symbolp (car node)) 
            (note-p (car node))
-           (cadr node)
-           (rtm (cadr node))))) 
+           (or (null (cdr node))
+               (and (cadr node) (rtm (cadr node))))))) 
 
 (defun is-rest-p (node) 
   (or (and (symbolp node) (member node '(RST R)))
@@ -27,7 +27,9 @@
 (defun is-command-p (node)
   (and (listp node) (symbolp (car node))
        (or (gethash (car node) *command-dictionary*)
-           (gethash (car node) *rewrite-rules*))))
+           (let ((rule (gethash (car node) *rewrite-rules*)))
+             (and rule
+                  (= (length (cdr node)) (length (getf rule :vars))))))))
 
 ;; =============================================================================
 ;; AST DISPATCHERS

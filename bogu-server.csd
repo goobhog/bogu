@@ -137,11 +137,12 @@ kpan_sm portk kpan, 0.05
 krvb_sm portk krvb, 0.05
 kflt_sm portk kflt, 0.05
 
-asig_raw poscil iamp, icps, 2  
+asig_raw pluck iamp, icps, icps, 2, 1  
 
-asig = asig_raw  
+kcutoff = cpsoct((kflt_sm * 10) + 4)
+asig moogladder asig_raw, kcutoff, 0.25  
 
-ares linen asig, 0.03, p3, 0.05
+ares linen asig, 0.01, p3, 0.1
 
 aL, aR pan2 (ares * kvol_sm), kpan_sm
 vincr ga_master_L, aL

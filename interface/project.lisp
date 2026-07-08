@@ -26,7 +26,7 @@
               ((string= "%" line) (format out "~a~%" line))
               ;; THE FIX: Added 'clear' and 'reset' to the ignore list!
               ((or (null parsed)
-                   (member cmd '(play save help vars where bogu-load load start-audio-engine clear reset)))
+                   (member cmd '(play save help vars where bogu-load load start-audio-engine clear reset loops)))
                nil)
               (t (format out "~a~%" line)))))))
     (format t "saved \"compositions/~a/~a.bogu\"~%" fname fname)))
@@ -124,3 +124,44 @@
 (defun reset ()
   "Allows the 'reset' command to be evaluated directly from a .bogu script."
   (reset-bogu))
+
+(defun where ()
+  "Reports the current chronological position of all active track playheads."
+  (format t "~%--- [TIMELINE STATUS] ---~%")
+  (if (= (hash-table-count *tracks*) 0)
+      (format t " All tracks at: 0.0s (Master Start)~%")
+      (maphash (lambda (instr-id trk)
+                 (format t " Instrument ~2a : ~,3fs ~a~%" 
+                         instr-id 
+                         (track-playhead trk)
+                         (if (= instr-id *current-instrument*) "<-- (ACTIVE)" "")))
+               *tracks*))
+  (format t "-------------------------~%")
+  t)
+
+(defun vars (&optional show-all)
+  "Displays the current ledger of user-defined variables."
+  (format t "~%--- BOGU VARIABLES ---~%")
+  (if (= (hash-table-count *vars*) 0)
+      (format t " (No custom variables defined yet)~%")
+      (maphash (lambda (k v) (format t " ~a: ~a~%" k v)) *vars*))
+      
+  (when (eq show-all 'all)
+    (format t "~%--- STANDARD LIBRARY ---~%")
+    (maphash (lambda (k v) (format t " ~a: ~a~%" k v)) *stdlib-vars*))
+  (format t "----------------------~%~%")
+  t)
+
+(defun loops ()
+  "Displays all currently active live-loops and their thread status."
+  (format t "~%--- ACTIVE LIVE LOOPS ---~%")
+  (if (= (hash-table-count *live-loops*) 0)
+      (format t " (No active loops)~%")
+      (maphash (lambda (name ast)
+                 (let ((thread (gethash name *loop-threads*)))
+                   (format t " [~A] ~A~%" 
+                           (if (and thread (sb-thread:thread-alive-p thread)) "RUNNING" "DEAD")
+                           name)))
+               *live-loops*))
+  (format t "-------------------------~%~%")
+  t)
